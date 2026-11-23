@@ -11,3 +11,5 @@ Dockerfile
 eslint.config.js
 test
 README.md
+scripts
+SECURITY.md

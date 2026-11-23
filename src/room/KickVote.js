@@ -1,31 +1,37 @@
 'use strict';
 
-/** Guests' votes to remove the host. Passes once `needed` distinct guests have voted. */
+/**
+ * Guests' votes to remove the host. Passes once votes from `needed` distinct voter keys
+ * are in. The key is normally the voter's IP address, so opening several tabs doesn't
+ * give one person several votes.
+ */
 class KickVote {
-  /** @param {number} needed - minimum number of votes */
+  /** @param {number} needed - minimum number of distinct votes */
   constructor(needed) {
     if (!Number.isInteger(needed) || needed < 1) throw new RangeError(`Invalid vote threshold: ${needed}`);
     this.needed = needed;
-    /** @type {Set<string>} voter ids */
-    this.voters = new Set();
+    /** @type {Map<string, string>} voter id -> the key their vote counts under */
+    this.voters = new Map();
   }
 
+  /** Distinct votes. */
   get count() {
-    return this.voters.size;
+    return new Set(this.voters.values()).size;
   }
 
   get passed() {
-    return this.voters.size >= this.needed;
+    return this.count >= this.needed;
   }
 
   /**
    * Casts or withdraws a vote.
    * @param {string} voterId
+   * @param {string} [key] - votes with the same key count once
    * @returns {boolean} whether the voter is now voting
    */
-  toggle(voterId) {
+  toggle(voterId, key = voterId) {
     if (this.voters.delete(voterId)) return false;
-    this.voters.add(voterId);
+    this.voters.set(voterId, key);
     return true;
   }
 

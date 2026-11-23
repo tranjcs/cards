@@ -143,7 +143,59 @@ describe('Room', () => {
     });
   });
 
+  describe('limits', () => {
+    it('refuses to join beyond capacity', () => {
+      create({ maxMembers: 2 });
+      joinAll('a', 'b');
+      assert.throws(() => room.join('c'), { code: 'room-full' });
+      room.leave('b');
+      room.join('c');
+    });
+
+    it('bans a kicked player\'s address for a while', () => {
+      create({ kickBanMs: 60000 });
+      room.join('a', null, '1.1.1.1');
+      room.join('b', null, '2.2.2.2');
+      room.kick('a', publicIdOf('b'));
+      assert.throws(() => room.join('b2', null, '2.2.2.2'), { code: 'banned' });
+      room.join('c', null, '3.3.3.3'); // others unaffected
+      mock.timers.tick(60000);
+      room.join('b3', null, '2.2.2.2');
+      assert.equal(room.members.has('b3'), true);
+    });
+
+    it('does not ban an address the host shares', () => {
+      room.join('a', null, '1.1.1.1');
+      room.join('b', null, '1.1.1.1');
+      room.kick('a', publicIdOf('b'));
+      room.join('b2', null, '1.1.1.1');
+      assert.equal(room.members.has('b2'), true);
+    });
+
+    it('does not ban when the ban is turned off', () => {
+      create({ kickBanMs: 0 });
+      room.join('a', null, '1.1.1.1');
+      room.join('b', null, '2.2.2.2');
+      room.kick('a', publicIdOf('b'));
+      room.join('b2', null, '2.2.2.2');
+    });
+  });
+
   describe('voting to kick the host', () => {
+    it('counts one vote per address, so extra tabs do not help', () => {
+      create({ hostKickVotes: 2 });
+      room.join('h', null, '1.1.1.1');
+      room.join('g1', null, '2.2.2.2');
+      room.join('g1-tab2', null, '2.2.2.2');
+      room.voteKickHost('g1');
+      room.voteKickHost('g1-tab2');
+      assert.equal(room.hostId, 'h');
+      assert.equal(room.stateFor('g1').hostVote.votes, 1);
+      room.join('g2', null, '3.3.3.3');
+      room.voteKickHost('g2');
+      assert.equal(room.hostId, 'g1');
+    });
+
     it('needs at least 5 votes by default', () => {
       joinAll('h', 'g1', 'g2', 'g3', 'g4', 'g5', 'g6');
       for (const id of ['g1', 'g2', 'g3', 'g4']) room.voteKickHost(id);

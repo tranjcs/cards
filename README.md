@@ -22,6 +22,11 @@ Open http://localhost:3000 in two or more browser tabs. Use `npm run dev` to res
 | `TURN_TIMEOUT_MS` | `30000`   | Time per turn; when it runs out a random card is drawn for you |
 | `HOST_KICK_VOTES` | `5`       | Minimum guest votes needed to kick the host                  |
 | `IDLE_TIMEOUT_MS` | `1200000` | Disconnect a client with no activity for this long (20 min)  |
+| `MAX_ROOM_SIZE`   | `50`      | Most people in the room at once                              |
+| `MAX_CONNECTIONS_PER_IP` | `6` | Most simultaneous connections (tabs) from one IP address; `0` = unlimited |
+| `KICK_BAN_MS`     | `300000`  | How long a kicked player's IP can't rejoin (5 min); `0` = no ban |
+| `ONE_VOTE_PER_IP` | `true`    | Count host-kick votes once per IP. Set `false` to test votes from several local tabs |
+| `TRUSTED_PROXY_HOPS` | `0`    | Proxies in front that append to `X-Forwarded-For` (the deploy script sets `1` on Cloud Run). Keep `0` when clients connect directly, or anyone could fake their IP |
 
 ## How it works
 
@@ -60,6 +65,94 @@ If a player leaves mid-game, their cards go to the next player clockwise. The se
 authoritative: it validates every action, and each client only ever receives its own hand
 (other players' cards are sent as counts).
 
+## Security
+
+The server is authoritative and treats everything from clients as untrusted:
+
+- **Hidden information stays hidden.** Each client only receives its own hand; other hands are
+  sent as card counts. The card you took is only revealed to you and the player you took it from.
+  Shuffles use `crypto`, and picks from another player's face-down cards are random.
+- **Input validation.** Every action checks the sender's role and turn and validates its payload;
+  bad input gets an error message, never a crash. Messages over 4 KB are refused.
+- **Cross-site connections are refused.** WebSockets aren't covered by CORS, so the server checks
+  the `Origin` header itself; another website can't make its visitors join (or vote in) the room.
+- **Abuse limits.** Room size, connections per IP and messages per client (bursts of 20, then 5 a
+  second) are capped. Host-kick votes count once per IP, so one person with many tabs can't vote
+  the host out alone. A kicked player's IP is refused for 5 minutes (unless they share the host's IP).
+- **Headers.** A strict Content-Security-Policy (no inline or third-party scripts, no framing),
+  HSTS, `nosniff`, `Referrer-Policy: no-referrer` and friends.
+- **Rendering.** The client only ever sets text with `textContent`; names are server-generated.
+
+Limits worth knowing: IP-based rules treat everyone behind one IP (a household, an office, a phone
+carrier's NAT) as one person, and someone with many IP addresses can still get around them. There
+are no accounts, so a ban can't follow a person to another network.
+
+See [SECURITY.md](SECURITY.md) to report a vulnerability.
+
+## Deploy (Google Cloud Run)
+
+| Environment | Google Cloud project   | URL                           |
+| ----------- | ---------------------- | ----------------------------- |
+| `dev`       | `codebrew-development` | https://cards.steeping.studio |
+| `prod`      | `codebrew-production`  | https://cards.codebrew.studio |
+
+The targets live in [`scripts/environments.sh`](scripts/environments.sh). The service runs with
+`--max-instances 1` because the room lives in memory, `--min-instances 0` so it costs nothing while
+idle, and `TRUSTED_PROXY_HOPS=1` so per-IP limits see the real client address.
+
+Prerequisites: billing enabled on both projects, and the
+[gcloud CLI](https://cloud.google.com/sdk/docs/install) logged in (`gcloud auth login`) as an
+account that owns them.
+
+### First deploy and domains (once per environment)
+
+1. Deploy from your machine (builds with Cloud Build; production only from a clean `main`):
+
+   ```bash
+   ENVIRONMENT=dev ./scripts/deploy-cloudrun.sh
+   ENVIRONMENT=prod ./scripts/deploy-cloudrun.sh
+   ```
+
+2. Verify each parent domain once with the same Google account (opens Search Console; add the
+   `TXT` record it shows at your DNS provider):
+
+   ```bash
+   gcloud domains verify steeping.studio
+   gcloud domains verify codebrew.studio
+   ```
+
+3. Map the domains. The script prints the DNS record to add, normally a `CNAME` from `cards` to
+   `ghs.googlehosted.com.`:
+
+   ```bash
+   ENVIRONMENT=dev ./scripts/map-domain.sh
+   ENVIRONMENT=prod ./scripts/map-domain.sh
+   ```
+
+   On Cloudflare, set the record to **DNS only** (grey cloud). If the domain has `CAA` records, they
+   must allow `pki.goog` and `letsencrypt.org`. The certificate takes 15 minutes to a few hours;
+   rerun the script to check.
+
+### Deploying from GitHub
+
+The **Deploy** workflow (Actions → Deploy → Run workflow) tests the chosen branch, builds the image
+and deploys it to the environment you pick. `prod` only accepts `main`. GitHub logs in to Google
+with Workload Identity Federation, so no key is stored anywhere.
+
+1. For each environment, create the deploy account and identity provider (safe to rerun):
+
+   ```bash
+   ENVIRONMENT=dev ./scripts/setup-github-deploy.sh
+   ENVIRONMENT=prod ./scripts/setup-github-deploy.sh
+   ```
+
+   Google only accepts tokens from this repository's matching GitHub environment, and for `prod`
+   only from `main`.
+
+2. In GitHub, **Settings → Environments**, create `dev` and `prod`, and add the four secrets each
+   script prints (`GCP_PROJECT_ID`, `GCP_REGION`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`). For `prod`,
+   also add **required reviewers** and limit **deployment branches** to `main`.
+
 ## Project structure
 
 ```
@@ -69,6 +162,10 @@ src/
   config.js              Environment-based configuration
   constants.js           Shared enums: phases, kick reasons, event names
   errors.js              ActionError: a rejected player action with a safe message
+  net/
+    requests.js          Client IP (proxy-aware), same-origin check, security headers
+    RateLimiter.js       Per-client token bucket
+    ConnectionLimiter.js Connections per IP address
   random.js              Injectable randomness (crypto by default), Fisher-Yates shuffle
   cards/
     Card.js              Immutable playing card, suits and ranks
@@ -85,6 +182,11 @@ src/
     Player.js            A connected player
     NameAllocator.js     "Player N" names, reclaimable on reconnect
     KickVote.js          Votes to kick the host
+scripts/
+  environments.sh        dev/prod targets (project, domain, region)
+  deploy-cloudrun.sh     Build and deploy to Cloud Run
+  map-domain.sh          Point the environment's domain at the service
+  setup-github-deploy.sh One-time setup for the GitHub "Deploy" workflow
 public/
   index.html             Game page
   css/style.css          Styles (light/dark, phone layout)

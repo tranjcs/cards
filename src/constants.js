@@ -12,6 +12,9 @@ const KickReason = Object.freeze({
   HOST: 'host', // the host kicked them
   VOTE: 'vote', // they were the host and the guests voted them out
   IDLE: 'idle', // no activity for too long
+  BANNED: 'banned', // recently kicked by the host
+  ROOM_FULL: 'room-full', // the room is at capacity
+  TOO_MANY_CONNECTIONS: 'too-many-connections', // too many tabs from one address
 });
 
 /** Socket.IO event names shared by server and client (keep in sync with public/js/client.js). */

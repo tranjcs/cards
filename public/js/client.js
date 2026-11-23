@@ -21,6 +21,9 @@
     host: 'The host removed you from the room.',
     vote: 'The other players voted you out as host.',
     idle: 'You were disconnected for being inactive.',
+    banned: 'You were kicked from this room recently. Try again in a few minutes.',
+    'room-full': 'The room is full. Try again later.',
+    'too-many-connections': 'Too many tabs are open from your network. Close one and rejoin.',
   };
   const NAME_KEY = 'cards:name';
   const HEARTBEAT_MS = 60 * 1000;

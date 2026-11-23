@@ -7,6 +7,11 @@ const { server, io } = createApp({
   turnTimeoutMs: config.turnTimeoutMs,
   hostKickVotes: config.hostKickVotes,
   idleTimeoutMs: config.idleTimeoutMs,
+  maxRoomSize: config.maxRoomSize,
+  maxConnectionsPerIp: config.maxConnectionsPerIp,
+  kickBanMs: config.kickBanMs,
+  oneVotePerIp: config.oneVotePerIp,
+  trustedProxyHops: config.trustedProxyHops,
 });
 
 server.listen(config.port, () => {

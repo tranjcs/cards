@@ -10,6 +10,8 @@ const { Phase, KickReason } = require('../constants');
 
 const DEFAULT_HOST_KICK_VOTES = 5;
 const DEFAULT_TURN_TIMEOUT_MS = 30000;
+const DEFAULT_MAX_MEMBERS = 50;
+const DEFAULT_KICK_BAN_MS = 5 * 60 * 1000;
 const ACTIVITY_LIMIT = 5;
 
 /**
@@ -18,8 +20,10 @@ const ACTIVITY_LIMIT = 5;
  * The first person in is the host; everyone else is a guest. When the host leaves,
  * the longest-connected guest becomes host. The host picks the settings, starts the
  * game and can kick anyone. Guests can vote to kick the host; it takes at least
- * `hostKickVotes` votes. Everyone in the room when a game starts is dealt in (up to
- * the game's maximum); later arrivals watch until the next game.
+ * `hostKickVotes` votes, counted once per IP address so one person with several tabs
+ * can't outvote everyone. A kicked player's address can't rejoin for `kickBanMs`.
+ * Everyone in the room when a game starts is dealt in (up to the game's maximum);
+ * later arrivals watch until the next game.
  *
  * Independent of Socket.IO so it can be unit tested: `onChange` is called after every
  * change so the caller can push fresh state, and `onKick` to disconnect someone.
@@ -31,6 +35,9 @@ class Room {
    * @param {(id: string, reason: string) => void} [options.onKick]
    * @param {number} [options.hostKickVotes] - votes needed to kick the host
    * @param {number} [options.turnTimeoutMs] - a player who takes longer gets a random move
+   * @param {number} [options.maxMembers] - room capacity
+   * @param {number} [options.kickBanMs] - how long a kicked player's address is refused; 0 for never
+   * @param {boolean} [options.oneVotePerAddress] - count host-kick votes per IP address, not per tab
    * @param {import('../random').Rng} [options.rng]
    */
   constructor({
@@ -38,12 +45,20 @@ class Room {
     onKick = () => {},
     hostKickVotes = DEFAULT_HOST_KICK_VOTES,
     turnTimeoutMs = DEFAULT_TURN_TIMEOUT_MS,
+    maxMembers = DEFAULT_MAX_MEMBERS,
+    kickBanMs = DEFAULT_KICK_BAN_MS,
+    oneVotePerAddress = true,
     rng,
   }) {
     this.onChange = onChange;
     this.onKick = onKick;
     this.turnTimeoutMs = turnTimeoutMs;
+    this.maxMembers = maxMembers;
+    this.kickBanMs = kickBanMs;
+    this.oneVotePerAddress = oneVotePerAddress;
     this.rng = rng;
+    /** @type {Map<string, number>} address -> Date.now() until which it may not join */
+    this.bans = new Map();
     /** @type {Map<string, Player>} by connection id, in join order */
     this.members = new Map();
     /** @type {string|null} */
@@ -79,14 +94,20 @@ class Room {
   /**
    * @param {string} id - connection id
    * @param {unknown} [requestedName] - untrusted; the name the client had before reconnecting
+   * @param {string} [address] - the client's IP address
    * @returns {Player}
+   * @throws {ActionError} 'banned' or 'room-full'
    */
-  join(id, requestedName) {
+  join(id, requestedName, address = id) {
     const existing = this.members.get(id);
     if (existing) return existing;
+    if (this.isBanned(address)) {
+      throw new ActionError('banned', 'You were kicked from this room. Try again in a few minutes.');
+    }
+    if (this.members.size >= this.maxMembers) throw new ActionError('room-full', 'The room is full.');
     const name = this.names.allocate(requestedName, (n) => this.isNameTaken(n));
     this.publicIdCounter += 1;
-    const player = new Player({ id, publicId: `p${this.publicIdCounter}`, name });
+    const player = new Player({ id, publicId: `p${this.publicIdCounter}`, name, address });
     this.members.set(id, player);
     if (this.hostId === null) {
       this.hostId = id;
@@ -151,6 +172,11 @@ class Room {
     const target = [...this.members.values()].find((p) => p.publicId === targetPublicId);
     if (!target) throw new ActionError('no-such-player', 'That player is no longer here.');
     if (target.id === id) throw new ActionError('kick-self', "You can't kick yourself.");
+    // Players sharing the host's address (same household, or local testing) aren't
+    // banned: the ban would lock out the host's own network too.
+    if (this.kickBanMs > 0 && target.address !== this.members.get(id).address) {
+      this.bans.set(target.address, Date.now() + this.kickBanMs);
+    }
     this.announce(`${this.nameOf(id)} kicked ${target.name}.`);
     this.remove(target);
     this.changed();
@@ -166,7 +192,8 @@ class Room {
   voteKickHost(id) {
     this.assertMember(id);
     if (id === this.hostId) throw new ActionError('host-vote', "The host can't vote to kick themselves.");
-    const voting = this.hostKickVote.toggle(id);
+    const key = this.oneVotePerAddress ? this.members.get(id).address : id;
+    const voting = this.hostKickVote.toggle(id, key);
     const { count, needed } = this.hostKickVote;
     this.announce(`${this.nameOf(id)} ${voting ? 'voted' : 'withdrew their vote'} to kick the host (${count}/${needed}).`);
     if (this.hostKickVote.passed) {
@@ -318,6 +345,15 @@ class Room {
     if (id !== this.hostId) throw new ActionError('not-host', 'Only the host can do that.');
   }
 
+  /** @private Also forgets expired bans. */
+  isBanned(address) {
+    const now = Date.now();
+    for (const [banned, until] of this.bans) {
+      if (until <= now) this.bans.delete(banned);
+    }
+    return this.bans.has(address);
+  }
+
   /** @private */
   isNameTaken(name) {
     return [...this.members.values()].some((p) => p.name === name);
@@ -335,4 +371,4 @@ class Room {
   }
 }
 
-module.exports = { Room, DEFAULT_HOST_KICK_VOTES, DEFAULT_TURN_TIMEOUT_MS };
+module.exports = { Room, DEFAULT_HOST_KICK_VOTES, DEFAULT_TURN_TIMEOUT_MS, DEFAULT_MAX_MEMBERS, DEFAULT_KICK_BAN_MS };

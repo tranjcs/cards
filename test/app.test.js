@@ -37,7 +37,7 @@ describe('app (Socket.IO integration)', () => {
   };
 
   before(async () => {
-    ({ server, io, room } = createApp({ rng: seededRng(9), hostKickVotes: 2 }));
+    ({ server, io, room } = createApp({ rng: seededRng(9), hostKickVotes: 2, oneVotePerIp: false }));
     await new Promise((resolve) => server.listen(0, resolve));
     url = `http://localhost:${server.address().port}`;
   });
@@ -111,3 +111,75 @@ describe('app (Socket.IO integration)', () => {
     assert.ok((await next(socket, Events.ERROR)).message);
   });
 });
+
+describe('app security', () => {
+  let server;
+  let io;
+  let room;
+  let url;
+  const sockets = [];
+  const connectWith = (options = {}) => {
+    const socket = connect(url, { forceNew: true, transports: ['websocket'], reconnection: false, ...options });
+    sockets.push(socket);
+    return socket;
+  };
+
+  before(async () => {
+    ({ server, io, room } = createApp({ maxConnectionsPerIp: 2 }));
+    await new Promise((resolve) => server.listen(0, resolve));
+    url = `http://localhost:${server.address().port}`;
+  });
+
+  after(async () => {
+    sockets.forEach((s) => s.disconnect());
+    room.dispose();
+    await new Promise((resolve) => io.close(resolve));
+  });
+
+  it('sends security headers', async () => {
+    const res = await fetch(url);
+    assert.match(res.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+    assert.match(res.headers.get('content-security-policy'), /script-src 'self'/);
+    assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(res.headers.get('x-powered-by'), null);
+  });
+
+  it('refuses connections opened by another website', async () => {
+    const socket = connectWith({ extraHeaders: { Origin: 'https://evil.example' } });
+    const error = await new Promise((resolve) => socket.on('connect_error', resolve));
+    assert.ok(error);
+    assert.equal(room.members.size, 0);
+  });
+
+  it('accepts connections from its own origin', async () => {
+    const socket = connectWith({ extraHeaders: { Origin: url } });
+    await next(socket, Events.STATE);
+    socket.disconnect();
+  });
+
+  it('limits connections per address', async () => {
+    await until(() => room.members.size === 0);
+    const first = connectWith();
+    const second = connectWith();
+    await Promise.all([next(first, Events.STATE), next(second, Events.STATE)]);
+    const third = connectWith();
+    assert.deepEqual(await next(third, Events.KICKED), { reason: KickReason.TOO_MANY_CONNECTIONS });
+    assert.equal(room.members.size, 2);
+  });
+
+  it('rate-limits a client that floods messages', async () => {
+    const socket = sockets.find((s) => s.connected);
+    const limited = next(socket, Events.ERROR, (e) => e.code === 'rate-limited');
+    for (let i = 0; i < 50; i += 1) socket.emit(Events.DRAW_FROM_PILE);
+    assert.equal((await limited).code, 'rate-limited');
+  });
+});
+
+/** Polls until `condition` is true. */
+async function until(condition, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error('Timed out waiting for condition');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}

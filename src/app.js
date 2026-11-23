@@ -7,9 +7,15 @@ const { Server } = require('socket.io');
 const { Room } = require('./room/Room');
 const { ActionError } = require('./errors');
 const { Events, KickReason } = require('./constants');
+const { RateLimiter } = require('./net/RateLimiter');
+const { ConnectionLimiter } = require('./net/ConnectionLimiter');
+const { clientAddress, isSameOrigin, securityHeaders } = require('./net/requests');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const DEFAULT_IDLE_TIMEOUT_MS = 20 * 60 * 1000;
+// Client messages are tiny (a number or a small object); refuse anything bigger.
+const MAX_MESSAGE_BYTES = 4 * 1024;
+const RATE_LIMIT = Object.freeze({ capacity: 20, perSecond: 5 });
 
 /**
  * Client events and the Room method each one calls. Every handler receives the
@@ -26,11 +32,22 @@ const ACTIONS = Object.freeze({
   [Events.DRAW_FROM_PILE]: (room, id) => room.drawFromPile(id),
 });
 
+/** Room.join refusals that end the connection, and the reason the client is shown. */
+const JOIN_REFUSALS = Object.freeze({
+  banned: KickReason.BANNED,
+  'room-full': KickReason.ROOM_FULL,
+});
+
 /**
  * Creates the HTTP + Socket.IO server without starting it.
  * @param {object} [options]
  * @param {number} [options.turnTimeoutMs]
  * @param {number} [options.hostKickVotes]
+ * @param {number} [options.maxRoomSize]
+ * @param {number} [options.maxConnectionsPerIp] - 0 for unlimited
+ * @param {number} [options.kickBanMs]
+ * @param {boolean} [options.oneVotePerIp]
+ * @param {number} [options.trustedProxyHops] - proxies in front that append to X-Forwarded-For
  * @param {number} [options.idleTimeoutMs] - disconnect a client that reports no activity for this long
  * @param {number} [options.idleCheckMs] - how often to look for idle clients
  * @param {import('./random').Rng} [options.rng]
@@ -39,20 +56,30 @@ const ACTIONS = Object.freeze({
 function createApp({
   turnTimeoutMs,
   hostKickVotes,
+  maxRoomSize,
+  maxConnectionsPerIp = 0,
+  kickBanMs,
+  oneVotePerIp,
+  trustedProxyHops = 0,
   idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS,
   idleCheckMs = Math.min(30 * 1000, idleTimeoutMs),
   rng,
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
+  app.use(securityHeaders);
   app.use(express.static(PUBLIC_DIR));
 
   const server = http.createServer(app);
-  const io = new Server(server);
+  const io = new Server(server, {
+    maxHttpBufferSize: MAX_MESSAGE_BYTES,
+    // Refuse connections opened by other websites from their visitors' browsers.
+    allowRequest: (req, callback) => callback(null, isSameOrigin(req)),
+  });
 
-  /** Tells a removed client why, then disconnects it. */
-  const disconnect = (id, reason) => {
-    const socket = io.sockets.sockets.get(id);
+  /** Tells a client why it's being removed, then disconnects it. */
+  const disconnect = (socketOrId, reason) => {
+    const socket = typeof socketOrId === 'string' ? io.sockets.sockets.get(socketOrId) : socketOrId;
     if (!socket) return;
     socket.emit(Events.KICKED, { reason });
     socket.disconnect(true);
@@ -61,12 +88,17 @@ function createApp({
   const room = new Room({
     turnTimeoutMs,
     hostKickVotes,
+    maxMembers: maxRoomSize,
+    kickBanMs,
+    oneVotePerAddress: oneVotePerIp,
     rng,
     onKick: disconnect,
     onChange: () => {
       for (const id of room.memberIds) io.to(id).emit(Events.STATE, room.stateFor(id));
     },
   });
+
+  const connections = new ConnectionLimiter(maxConnectionsPerIp);
 
   /** @type {Map<string, number>} socket id -> Date.now() of the last sign of activity */
   const lastActive = new Map();
@@ -81,10 +113,35 @@ function createApp({
   idleSweep.unref();
 
   io.on('connection', (socket) => {
-    markActive(socket);
-    room.join(socket.id, socket.handshake.auth?.name);
-    socket.on(Events.ACTIVE, () => markActive(socket));
+    const address = clientAddress(socket.request, trustedProxyHops);
+    if (!connections.tryAcquire(address)) {
+      disconnect(socket, KickReason.TOO_MANY_CONNECTIONS);
+      return;
+    }
+    socket.on('disconnect', () => {
+      connections.release(address);
+      lastActive.delete(socket.id);
+      room.leave(socket.id);
+    });
 
+    try {
+      room.join(socket.id, socket.handshake.auth?.name, address);
+    } catch (error) {
+      const reason = error instanceof ActionError ? JOIN_REFUSALS[error.code] : undefined;
+      if (!reason) throw error;
+      disconnect(socket, reason);
+      return;
+    }
+    markActive(socket);
+
+    const limiter = new RateLimiter(RATE_LIMIT);
+    socket.use((_packet, next) => {
+      if (limiter.tryConsume()) return next();
+      socket.emit(Events.ERROR, { code: 'rate-limited', message: 'Slow down a little.' });
+      return undefined; // drop the message
+    });
+
+    socket.on(Events.ACTIVE, () => markActive(socket));
     for (const [event, action] of Object.entries(ACTIONS)) {
       socket.on(event, (payload) => {
         markActive(socket);
@@ -101,11 +158,6 @@ function createApp({
         }
       });
     }
-
-    socket.on('disconnect', () => {
-      lastActive.delete(socket.id);
-      room.leave(socket.id);
-    });
   });
 
   server.on('close', () => {
