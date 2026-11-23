@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>Old Maid</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main class="layout">
+    <header class="masthead">
+      <h1 class="title"><span class="title__suit" aria-hidden="true">♠♥</span> Old Maid</h1>
+      <p id="me" class="me"></p>
+    </header>
+
+    <p id="status" class="status" role="status" aria-live="polite">Connecting…</p>
+
+    <section id="table" class="panel table" aria-label="Card table" hidden>
+      <div class="turn-timer" aria-hidden="true">
+        <div id="timer-fill" class="turn-timer__fill"></div>
+      </div>
+      <p id="timer" class="timer" role="timer"></p>
+
+      <ol id="seats" class="seats" aria-label="Players, clockwise"></ol>
+
+      <div class="piles">
+        <div class="pile">
+          <button id="draw-pile" type="button" class="pile__stack" aria-label="Draw pile"></button>
+          <span id="draw-count" class="pile__label"></span>
+        </div>
+        <div class="pile">
+          <div id="discard-pile" class="pile__stack pile__stack--discard" aria-label="Discard pile"></div>
+          <span id="discard-count" class="pile__label"></span>
+        </div>
+      </div>
+
+      <div id="pick" class="pick" hidden>
+        <p id="pick-label" class="pick__label"></p>
+        <div id="pick-cards" class="pick__cards"></div>
+      </div>
+
+      <p id="last-draw" class="last-draw" aria-live="polite"></p>
+
+      <div class="hand-wrap">
+        <h2 class="section-title">Your hand <span id="hand-count" class="count"></span></h2>
+        <div id="hand" class="hand"></div>
+      </div>
+
+      <div id="result" class="result" hidden></div>
+
+      <details class="log" open>
+        <summary>Game log</summary>
+        <ul id="log" class="log__list"></ul>
+      </details>
+    </section>
+
+    <section class="panel lobby" aria-labelledby="players-heading">
+      <h2 id="players-heading" class="section-title">Players <span id="player-count" class="count"></span></h2>
+      <ul id="players" class="players"></ul>
+
+      <form id="host-controls" class="host-controls" hidden>
+        <label class="field">
+          <span class="field__label">Cards per player</span>
+          <select id="cards-per-player" class="field__input"></select>
+        </label>
+        <p class="hint">Old Maid uses the 52-card deck minus the Q♣. Cards that aren't dealt form the draw pile.</p>
+        <div class="actions">
+          <button id="start" type="submit" class="button button--primary">Start game</button>
+          <button id="end" type="button" class="button button--danger" hidden>End game</button>
+        </div>
+      </form>
+
+      <div id="guest-controls" class="guest-controls" hidden>
+        <p id="waiting-host" class="hint"></p>
+        <button id="vote-kick" type="button" class="button button--ghost"></button>
+      </div>
+
+      <ul id="activity" class="activity" aria-label="Room activity"></ul>
+    </section>
+
+    <details class="panel rules">
+      <summary>How to play</summary>
+      <ul>
+        <li>The Q♣ is removed, so one queen can never be paired: that's the <strong>Old Maid</strong>.</li>
+        <li>Cards are dealt clockwise; a random player goes first. Pairs are discarded automatically.</li>
+        <li>On your turn, take a hidden card from the next player who has cards, <em>or</em> draw from the draw pile.</li>
+        <li>Once the draw pile is empty, anyone without cards is safe. Whoever is left holding the Old Maid loses.</li>
+      </ul>
+    </details>
+  </main>
+
+  <div id="toast" class="toast" role="alert" hidden></div>
+
+  <div id="kicked" class="overlay" hidden>
+    <div class="panel overlay__box">
+      <p id="kicked-message"></p>
+      <button id="rejoin" type="button" class="button button--primary">Rejoin</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/cards.js"></script>
+  <script src="/js/client.js"></script>
+</body>
+</html>
