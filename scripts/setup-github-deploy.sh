@@ -5,7 +5,11 @@
 # Federation provider that trusts GitHub's tokens only for this repository's environment.
 # Safe to rerun. Prints the secrets to add to the GitHub environment; writes nothing to the repo.
 #
-# Usage: ENVIRONMENT=dev|prod [GITHUB_REPO=owner/repo] ./scripts/setup-github-deploy.sh
+# Usage: ENVIRONMENT=dev|prod [DEPLOY_SA_NAME=name] [GITHUB_REPO=owner/repo] ./scripts/setup-github-deploy.sh
+#
+# DEPLOY_SA_NAME picks the deploy service account (default: github-deploy-cards). Set it to an
+# existing account, e.g. DEPLOY_SA_NAME=github-deploy, to share one account between repos: this
+# script only adds bindings for this repo and never removes the ones other repos rely on.
 #
 # ENVIRONMENT is both the deploy target (see scripts/environments.sh) and the name of the
 # GitHub environment whose jobs may deploy. Production also only accepts the main branch.
@@ -17,7 +21,7 @@ source scripts/environments.sh
 
 POOL="github"
 PROVIDER="github-cards" # own provider, so other repos deploying to this project are untouched
-DEPLOY_SA_NAME="github-deploy-cards"
+DEPLOY_SA_NAME="${DEPLOY_SA_NAME:-github-deploy-cards}"
 
 # IAM changes on a just-created service account can fail for a few seconds until it propagates.
 retry() {

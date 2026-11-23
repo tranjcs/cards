@@ -149,6 +149,16 @@ with Workload Identity Federation, so no key is stored anywhere.
    Google only accepts tokens from this repository's matching GitHub environment, and for `prod`
    only from `main`.
 
+   To share an existing deploy account (for example tic-tac-toe's `github-deploy`) instead of
+   creating `github-deploy-cards`, set `DEPLOY_SA_NAME`:
+
+   ```bash
+   DEPLOY_SA_NAME=github-deploy ENVIRONMENT=dev ./scripts/setup-github-deploy.sh
+   ```
+
+   The script only adds what cards needs (login from this repo, pushing to the `cards` image
+   repository); the other repo's access stays as it is.
+
 2. In GitHub, **Settings → Environments**, create `dev` and `prod`, and add the four secrets each
    script prints (`GCP_PROJECT_ID`, `GCP_REGION`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`). For `prod`,
    also add **required reviewers** and limit **deployment branches** to `main`.
