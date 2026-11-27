@@ -126,7 +126,7 @@
     }
     if (phase === Phase.FINISHED) {
       if (!game.result.loser) return 'Game over: not enough players.';
-      return game.result.youLost ? "You're stuck with the Old Maid! 👵" : `${game.result.loser} is stuck with the Old Maid!`;
+      return game.result.youLost ? "You're stuck with the Old Maid!" : `${game.result.loser} is stuck with the Old Maid!`;
     }
     if (!game.isPlaying) return `Watching: ${game.turn}'s turn. You'll be dealt in next game.`;
     if (game.isYourTurn) {
@@ -134,7 +134,7 @@
       if (game.target) return `Your turn! Take a card from ${game.target.name}.`;
       return 'Your turn! Draw from the pile.';
     }
-    if (game.safe.includes(state.you.name)) return "You're safe! 🎉 Watch the others finish.";
+    if (game.safe.includes(state.you.name)) return "You're safe! Watch the others finish.";
     return `${game.turn}'s turn…`;
   }
 
@@ -159,9 +159,9 @@
         for (let i = 0; i < shown; i += 1) fan.appendChild(CardView.back({ extraClass: 'card--mini' }));
       }
       const badges = [];
-      if (seat.isTurn) badges.push('▶ turn');
-      if (seat.isSafe) badges.push('✓ safe');
-      if (seat.isLoser) badges.push('👵 old maid');
+      if (seat.isTurn) badges.push('turn');
+      if (seat.isSafe) badges.push('safe');
+      if (seat.isLoser) badges.push('old maid');
       li.append(name, count, fan);
       if (badges.length) li.appendChild(make('span', 'seat__badge', badges.join(' · ')));
       return li;
@@ -215,7 +215,7 @@
     if (!game.result) return;
     ui.result.classList.toggle('result--lost', game.result.youLost);
     ui.result.textContent = game.result.loser
-      ? (game.result.youLost ? 'You lost — you hold the Old Maid! 👵' : `${game.result.loser} holds the Old Maid! 👵`)
+      ? (game.result.youLost ? 'You lost — you hold the Old Maid.' : `${game.result.loser} holds the Old Maid.`)
       : 'Game over: everyone else left.';
   }
 
@@ -241,7 +241,7 @@
       const li = make('li', 'player');
       li.appendChild(make('span', 'avatar', member.name.replace(/\D/g, '') || member.name.charAt(0)));
       const name = make('span', 'player__name', member.name);
-      if (member.isHost) name.appendChild(make('span', 'tag tag--host', '👑 host'));
+      if (member.isHost) name.appendChild(make('span', 'tag tag--host', 'host'));
       if (member.isYou) name.appendChild(make('span', 'tag', 'you'));
       if (state.game && !member.inGame) name.appendChild(make('span', 'tag', 'watching'));
       li.appendChild(name);
@@ -297,7 +297,7 @@
   // ---- render --------------------------------------------------------------
 
   function render(state) {
-    ui.me.textContent = `You are ${state.you.name}${state.you.isHost ? ' · 👑 host' : ''}`;
+    ui.me.textContent = `You are ${state.you.name}${state.you.isHost ? ' · host' : ''}`;
     ui.status.textContent = statusText(state);
     document.body.dataset.phase = state.phase;
     renderTable(state);
