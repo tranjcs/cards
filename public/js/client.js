@@ -15,8 +15,16 @@
     VOTE_KICK_HOST: 'vote-kick-host',
     DRAW_FROM_PLAYER: 'draw-from-player',
     DRAW_FROM_PILE: 'draw-from-pile',
+    PLAY_CARDS: 'play-cards',
+    PASS: 'pass',
     ACTIVE: 'active',
   };
+  const GameType = { OLD_MAID: 'old-maid', PUSOY_DOS: 'pusoy-dos' };
+  const SETTINGS_HINTS = {
+    [GameType.OLD_MAID]: "Old Maid uses the 52-card deck minus the Q♣. Cards that aren't dealt form the draw pile.",
+    [GameType.PUSOY_DOS]: 'Pusoy Dos is for 2 to 4 players: 13 cards each (17 with three). 3 is low, 2 is high.',
+  };
+  const MAX_PLAY_SIZE = 5;
   const KICK_MESSAGES = {
     host: 'The host removed you from the room.',
     vote: 'The other players voted you out as host.',
@@ -47,6 +55,7 @@
   const $ = (id) => document.getElementById(id);
   const ui = {
     me: $('me'),
+    titleText: $('title-text'),
     status: $('status'),
     table: $('table'),
     timer: $('timer'),
@@ -60,6 +69,15 @@
     pickLabel: $('pick-label'),
     pickCards: $('pick-cards'),
     lastDraw: $('last-draw'),
+    piles: $('piles'),
+    trick: $('trick'),
+    trickLabel: $('trick-label'),
+    trickCards: $('trick-cards'),
+    playControls: $('play-controls'),
+    play: $('play'),
+    pass: $('pass'),
+    clearSelection: $('clear-selection'),
+    selection: $('selection'),
     hand: $('hand'),
     handCount: $('hand-count'),
     result: $('result'),
@@ -67,6 +85,10 @@
     players: $('players'),
     playerCount: $('player-count'),
     hostControls: $('host-controls'),
+    gameType: $('game-type'),
+    cardsPerPlayerField: $('cards-per-player-field'),
+    settingsHint: $('settings-hint'),
+    rules: document.querySelectorAll('.rules[data-game]'),
     cardsPerPlayer: $('cards-per-player'),
     start: $('start'),
     end: $('end'),
@@ -124,6 +146,7 @@
       if (state.members.length < state.limits.minPlayers) return 'Waiting for more players to join…';
       return state.you.isHost ? 'Pick the settings and start the game.' : `Waiting for ${state.host} to start the game…`;
     }
+    if (game.type === GameType.PUSOY_DOS) return pusoyStatusText(state);
     if (phase === Phase.FINISHED) {
       if (!game.result.loser) return 'Game over: not enough players.';
       return game.result.youLost ? "You're stuck with the Old Maid! 👵" : `${game.result.loser} is stuck with the Old Maid!`;
@@ -138,6 +161,20 @@
     return `${game.turn}'s turn…`;
   }
 
+  function pusoyStatusText(state) {
+    const { game } = state;
+    if (game.result) {
+      if (!game.result.winner) return 'Game over: not enough players.';
+      return game.result.youWon ? 'You played all your cards. You win! 🏆' : `${game.result.winner} wins! 🏆`;
+    }
+    if (!game.isPlaying) return `Watching: ${game.turn}'s turn. You'll be dealt in next game.`;
+    if (!game.isYourTurn) return `${game.turn}'s turn…`;
+    if (game.mustInclude) return `Your lead! Your first play must include the ${CardView.label(game.mustInclude)}.`;
+    if (!game.table) return 'Your lead! Play anything: a single, pair, three of a kind or five-card hand.';
+    const n = game.table.cards.length;
+    return `Your turn! Beat the ${game.table.name} with ${n} ${n === 1 ? 'card' : 'cards'}, or pass.`;
+  }
+
   // ---- table -------------------------------------------------------------
 
   function renderSeats(game) {
@@ -147,7 +184,9 @@
       li.classList.toggle('seat--you', seat.isYou);
       li.classList.toggle('seat--target', seat.isTarget);
       li.classList.toggle('seat--safe', seat.isSafe);
-      li.classList.toggle('seat--loser', seat.isLoser);
+      li.classList.toggle('seat--loser', Boolean(seat.isLoser));
+      li.classList.toggle('seat--winner', Boolean(seat.isWinner));
+      li.classList.toggle('seat--passed', Boolean(seat.hasPassed));
 
       const name = make('span', 'seat__name', seat.isYou ? `${seat.name} (you)` : seat.name);
       const count = make('span', 'seat__count', `${seat.cardCount} ${seat.cardCount === 1 ? 'card' : 'cards'}`);
@@ -162,6 +201,9 @@
       if (seat.isTurn) badges.push('▶ turn');
       if (seat.isSafe) badges.push('✓ safe');
       if (seat.isLoser) badges.push('👵 old maid');
+      if (seat.isWinner) badges.push('🏆 winner');
+      if (seat.isLeader) badges.push('▲ on the table');
+      if (seat.hasPassed) badges.push('passed');
       li.append(name, count, fan);
       if (badges.length) li.appendChild(make('span', 'seat__badge', badges.join(' · ')));
       return li;
@@ -210,9 +252,67 @@
     }
   }
 
+  // ---- Pusoy Dos --------------------------------------------------------
+
+  /** Card ids the player has picked to play. Kept across state updates. */
+  let selected = new Set();
+
+  function renderTrick(game) {
+    const { table } = game;
+    ui.trick.hidden = false;
+    if (!table) {
+      ui.trickLabel.textContent = game.result ? 'Table' : 'The table is clear: the leader plays anything.';
+      ui.trickCards.replaceChildren();
+      return;
+    }
+    const by = table.byYou ? 'You' : table.by;
+    ui.trickLabel.textContent = `${by} played ${table.name === 'single' ? 'a single' : `a ${table.name}`}:`;
+    ui.trickCards.replaceChildren(...table.cards.map((card) => CardView.face(card)));
+  }
+
+  function selectionText(game) {
+    if (selected.size === 0) {
+      return game.table ? `Pick ${game.table.cards.length} to play, or pass.` : 'Pick cards to play.';
+    }
+    return `${selected.size} selected`;
+  }
+
+  function renderPusoyHand(game) {
+    const cards = game.hand ?? [];
+    const canAct = game.isYourTurn && !game.result;
+    // Forget picks that are no longer in the hand (played, or a new game).
+    selected = new Set(cards.map((card) => card.id).filter((id) => selected.has(id)));
+    ui.hand.closest('.hand-wrap').hidden = !game.isPlaying;
+    ui.handCount.textContent = `(${cards.length})`;
+    ui.hand.replaceChildren(...cards.map((card) => CardView.selectable(card, {
+      selected: selected.has(card.id),
+      disabled: Boolean(game.result),
+      onClick: () => {
+        if (selected.has(card.id)) selected.delete(card.id);
+        else if (selected.size < MAX_PLAY_SIZE) selected.add(card.id);
+        else showToast(`You can play at most ${MAX_PLAY_SIZE} cards.`);
+        renderPusoyHand(game);
+      },
+    })));
+    if (game.isPlaying && cards.length === 0) ui.hand.appendChild(make('p', 'hint', 'No cards left.'));
+
+    ui.playControls.hidden = !game.isPlaying || Boolean(game.result);
+    ui.play.disabled = !canAct || selected.size === 0;
+    ui.pass.disabled = !game.canPass;
+    ui.clearSelection.disabled = selected.size === 0;
+    ui.selection.textContent = canAct ? selectionText(game) : '';
+  }
+
   function renderResult(game) {
     ui.result.hidden = !game.result;
     if (!game.result) return;
+    if (game.type === GameType.PUSOY_DOS) {
+      ui.result.classList.toggle('result--lost', Boolean(game.isPlaying && !game.result.youWon && game.result.winner));
+      ui.result.textContent = game.result.winner
+        ? (game.result.youWon ? 'You win! 🏆' : `${game.result.winner} wins! 🏆`)
+        : 'Game over: everyone else left.';
+      return;
+    }
     ui.result.classList.toggle('result--lost', game.result.youLost);
     ui.result.textContent = game.result.loser
       ? (game.result.youLost ? 'You lost — you hold the Old Maid! 👵' : `${game.result.loser} holds the Old Maid! 👵`)
@@ -224,11 +324,22 @@
     ui.table.hidden = !game;
     renderTimer(game);
     if (!game) return;
+    const pusoy = game.type === GameType.PUSOY_DOS;
     renderSeats(game);
-    renderPiles(game);
-    renderPick(game);
-    ui.lastDraw.textContent = lastDrawText(game.lastDraw);
-    renderHand(game);
+    ui.piles.hidden = pusoy;
+    ui.lastDraw.hidden = pusoy;
+    ui.trick.hidden = !pusoy;
+    ui.playControls.hidden = !pusoy;
+    if (pusoy) {
+      ui.pick.hidden = true;
+      renderTrick(game);
+      renderPusoyHand(game);
+    } else {
+      renderPiles(game);
+      renderPick(game);
+      ui.lastDraw.textContent = lastDrawText(game.lastDraw);
+      renderHand(game);
+    }
     renderResult(game);
     renderList(ui.log, [...game.log].reverse());
   }
@@ -264,6 +375,16 @@
     if (!you.isHost) return;
     const playing = phase === Phase.PLAYING;
 
+    ui.gameType.replaceChildren(...state.games.map((game) => {
+      const option = make('option', '', `${game.title} (${game.minPlayers}–${game.maxPlayers} players)`);
+      option.value = game.type;
+      return option;
+    }));
+    ui.gameType.value = settings.game;
+    ui.gameType.disabled = playing;
+    ui.cardsPerPlayerField.hidden = settings.game !== GameType.OLD_MAID;
+    ui.settingsHint.textContent = SETTINGS_HINTS[settings.game] ?? '';
+
     const options = [[DEAL_ALL, 'All cards (classic)']];
     for (let n = 1; n <= settings.maxCardsPerPlayer; n += 1) options.push([n, String(n)]);
     // Keep a saved value visible even if more players joined and it's now above the cap.
@@ -296,7 +417,17 @@
 
   // ---- render --------------------------------------------------------------
 
+  function titleOf(state) {
+    const type = state.game?.type ?? state.settings.game;
+    return state.games.find((game) => game.type === type)?.title ?? 'Cards';
+  }
+
   function render(state) {
+    const title = titleOf(state);
+    const type = state.game?.type ?? state.settings.game;
+    ui.titleText.textContent = title;
+    document.title = title;
+    ui.rules.forEach((rules) => { rules.hidden = rules.dataset.game !== type; });
     ui.me.textContent = `You are ${state.you.name}${state.you.isHost ? ' · 👑 host' : ''}`;
     ui.status.textContent = statusText(state);
     document.body.dataset.phase = state.phase;
@@ -306,6 +437,9 @@
     renderGuestControls(state);
     renderList(ui.activity, [...state.activity].reverse());
   }
+
+  /** The latest state from the server, for re-rendering local changes (card picks). */
+  let lastState = null;
 
   let toastTimer = null;
   function showToast(message) {
@@ -318,6 +452,17 @@
   // ---- events --------------------------------------------------------------
 
   ui.drawPile.addEventListener('click', () => socket.emit(Events.DRAW_FROM_PILE));
+  ui.play.addEventListener('click', () => {
+    if (selected.size > 0) socket.emit(Events.PLAY_CARDS, [...selected]);
+  });
+  ui.pass.addEventListener('click', () => socket.emit(Events.PASS));
+  ui.clearSelection.addEventListener('click', () => {
+    selected.clear();
+    if (lastState?.game) renderPusoyHand(lastState.game);
+  });
+  ui.gameType.addEventListener('change', () => {
+    socket.emit(Events.UPDATE_SETTINGS, { game: ui.gameType.value });
+  });
   ui.cardsPerPlayer.addEventListener('change', () => {
     socket.emit(Events.UPDATE_SETTINGS, { cardsPerPlayer: Number(ui.cardsPerPlayer.value) });
   });
@@ -338,6 +483,7 @@
   socket.on(Events.STATE, (state) => {
     if (!state) return;
     storage.set(state.you.name);
+    lastState = state;
     render(state);
   });
   socket.on(Events.ERROR, ({ message }) => showToast(message));

@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <title>Old Maid</title>
+  <title>Cards</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
   <main class="layout">
     <header class="masthead">
-      <h1 class="title"><span class="title__suit" aria-hidden="true">♠♥</span> Old Maid</h1>
+      <h1 class="title"><span class="title__suit" aria-hidden="true">♠♥</span> <span id="title-text">Cards</span></h1>
       <p id="me" class="me"></p>
     </header>
 
@@ -24,7 +24,7 @@
 
       <ol id="seats" class="seats" aria-label="Players, clockwise"></ol>
 
-      <div class="piles">
+      <div id="piles" class="piles">
         <div class="pile">
           <button id="draw-pile" type="button" class="pile__stack" aria-label="Draw pile"></button>
           <span id="draw-count" class="pile__label"></span>
@@ -42,9 +42,20 @@
 
       <p id="last-draw" class="last-draw" aria-live="polite"></p>
 
+      <div id="trick" class="trick" hidden>
+        <p id="trick-label" class="trick__label"></p>
+        <div id="trick-cards" class="trick__cards"></div>
+      </div>
+
       <div class="hand-wrap">
         <h2 class="section-title">Your hand <span id="hand-count" class="count"></span></h2>
         <div id="hand" class="hand"></div>
+        <div id="play-controls" class="actions play-controls" hidden>
+          <button id="play" type="button" class="button button--primary">Play</button>
+          <button id="pass" type="button" class="button button--ghost">Pass</button>
+          <button id="clear-selection" type="button" class="button button--ghost">Clear</button>
+          <span id="selection" class="selection" aria-live="polite"></span>
+        </div>
       </div>
 
       <div id="result" class="result" hidden></div>
@@ -61,10 +72,14 @@
 
       <form id="host-controls" class="host-controls" hidden>
         <label class="field">
+          <span class="field__label">Game</span>
+          <select id="game-type" class="field__input"></select>
+        </label>
+        <label id="cards-per-player-field" class="field">
           <span class="field__label">Cards per player</span>
           <select id="cards-per-player" class="field__input"></select>
         </label>
-        <p class="hint">Old Maid uses the 52-card deck minus the Q♣. Cards that aren't dealt form the draw pile.</p>
+        <p id="settings-hint" class="hint"></p>
         <div class="actions">
           <button id="start" type="submit" class="button button--primary">Start game</button>
           <button id="end" type="button" class="button button--danger" hidden>End game</button>
@@ -79,13 +94,28 @@
       <ul id="activity" class="activity" aria-label="Room activity"></ul>
     </section>
 
-    <details class="panel rules">
-      <summary>How to play</summary>
+    <details class="panel rules" data-game="old-maid">
+      <summary>How to play Old Maid</summary>
       <ul>
         <li>The Q♣ is removed, so one queen can never be paired: that's the <strong>Old Maid</strong>.</li>
         <li>Cards are dealt clockwise; a random player goes first. Pairs are discarded automatically.</li>
         <li>On your turn, take a hidden card from the next player who has cards, <em>or</em> draw from the draw pile.</li>
         <li>Once the draw pile is empty, anyone without cards is safe. Whoever is left holding the Old Maid loses.</li>
+      </ul>
+    </details>
+
+    <details class="panel rules" data-game="pusoy-dos" hidden>
+      <summary>How to play Pusoy Dos</summary>
+      <ul>
+        <li>2 to 4 players. Each gets 13 cards (17 with three players); any others are set aside unseen.</li>
+        <li>Cards rank <strong>3 (lowest)</strong> up to K, A, <strong>2 (highest)</strong>. Suits break ties: ♣ &lt; ♠ &lt; ♥ &lt; ♦.</li>
+        <li>Whoever has the 3♣ (or the lowest card dealt) leads, and the first play must include that card.</li>
+        <li>Play a <strong>single</strong>, a <strong>pair</strong>, <strong>three of a kind</strong>, or <strong>five cards</strong>:
+          straight &lt; flush &lt; full house &lt; four of a kind (+ any card) &lt; straight flush.</li>
+        <li>Straights run from 3-4-5-6-7 up to 10-J-Q-K-A (no 2s, no wrapping round) and, like flushes, are compared by their highest card. Full houses and four of a kind are compared by the matching cards.</li>
+        <li>On your turn, beat the cards on the table with a higher play of the <em>same number of cards</em>, or pass. You can still play on a later turn after passing.</li>
+        <li>When everyone else passes, the last player to play clears the table and leads anything.</li>
+        <li>The first player to get rid of all their cards wins.</li>
       </ul>
     </details>
   </main>
