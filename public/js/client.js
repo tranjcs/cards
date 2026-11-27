@@ -182,10 +182,12 @@
   function renderSeats(game) {
     ui.seats.replaceChildren(...game.seats.map((seat) => {
       const li = make('li', 'seat');
-      li.classList.toggle('seat--turn', seat.isTurn);
-      li.classList.toggle('seat--you', seat.isYou);
-      li.classList.toggle('seat--target', seat.isTarget);
-      li.classList.toggle('seat--safe', seat.isSafe);
+      // Boolean(): toggle(name, undefined) flips the class instead of removing it, and
+      // each game only sends the flags it uses.
+      li.classList.toggle('seat--turn', Boolean(seat.isTurn));
+      li.classList.toggle('seat--you', Boolean(seat.isYou));
+      li.classList.toggle('seat--target', Boolean(seat.isTarget));
+      li.classList.toggle('seat--safe', Boolean(seat.isSafe));
       li.classList.toggle('seat--loser', Boolean(seat.isLoser));
       li.classList.toggle('seat--winner', Boolean(seat.isWinner));
       li.classList.toggle('seat--passed', Boolean(seat.hasPassed));
@@ -356,12 +358,12 @@
     ui.piles.hidden = pusoy;
     ui.lastDraw.hidden = pusoy;
     ui.trick.hidden = !pusoy;
-    ui.playControls.hidden = !pusoy;
     if (pusoy) {
       ui.pick.hidden = true;
       renderTrick(game);
       renderPusoyHand(game);
     } else {
+      ui.playControls.hidden = true;
       renderPiles(game);
       renderPick(game);
       ui.lastDraw.textContent = lastDrawText(game.lastDraw);
@@ -514,7 +516,10 @@
     if (!state) return;
     storage.set(state.you.name);
     // A new deal: forget the free arrangement of the last game's cards.
-    if (state.phase === Phase.PLAYING && lastState?.phase !== Phase.PLAYING) arranger.reset();
+    if (state.phase === Phase.PLAYING && lastState?.phase !== Phase.PLAYING) {
+      arranger.reset();
+      selected.clear(); // card ids repeat between deals
+    }
     lastState = state;
     render(state);
   });

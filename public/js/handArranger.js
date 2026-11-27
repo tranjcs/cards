@@ -121,8 +121,9 @@ window.HandArranger = (() => {
       el.style.transform = '';
       clearDropMarks();
       const wasActive = drag.active;
+      const wasLifted = drag.touch && drag.armed;
       drag = null;
-      if (wasActive) {
+      if (wasActive || wasLifted) {
         // The click that follows a drag must not also select the card.
         suppressClick = true;
         setTimeout(() => { suppressClick = false; }, 0);
@@ -175,6 +176,15 @@ window.HandArranger = (() => {
         }
         if (!drag.touch && distance < DRAG_THRESHOLD_PX) return;
         drag.active = true;
+        // The hand may have been re-rendered since pointerdown; follow the new element.
+        if (!drag.el.isConnected) {
+          const fresh = container.querySelector(`[data-card-id="${CSS.escape(drag.id)}"]`);
+          if (!fresh) {
+            endDrag(false);
+            return;
+          }
+          drag.el = fresh;
+        }
         drag.el.setPointerCapture?.(event.pointerId);
         drag.el.classList.add('card--dragging');
       }

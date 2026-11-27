@@ -93,6 +93,10 @@ class PusoyDosGame extends CardGame {
     }
     const cards = hand.findAll(cardIds);
     if (!cards) throw new ActionError('invalid-cards', "You don't have those cards.");
+    if (this.trick && cards.length !== this.trick.combo.size) {
+      const n = this.trick.combo.size;
+      throw new ActionError('wrong-size', `Play ${n} ${n === 1 ? 'card' : 'cards'} to beat the table, or pass.`);
+    }
     const combo = identify(cards);
     if (!combo) {
       throw new ActionError(
@@ -103,14 +107,8 @@ class PusoyDosGame extends CardGame {
     if (this.openingCard && !cards.includes(this.openingCard)) {
       throw new ActionError('must-open', `The first play must include the ${this.openingCard}.`);
     }
-    if (this.trick) {
-      if (combo.size !== this.trick.combo.size) {
-        const n = this.trick.combo.size;
-        throw new ActionError('wrong-size', `Play ${n} ${n === 1 ? 'card' : 'cards'} to beat the table, or pass.`);
-      }
-      if (!beats(combo, this.trick.combo)) {
-        throw new ActionError('too-low', `That doesn't beat the ${COMBO_NAMES[this.trick.combo.type]} on the table.`);
-      }
+    if (this.trick && !beats(combo, this.trick.combo)) {
+      throw new ActionError('too-low', `That doesn't beat the ${COMBO_NAMES[this.trick.combo.type]} on the table.`);
     }
 
     hand.removeAll(cards);

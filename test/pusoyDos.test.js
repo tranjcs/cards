@@ -176,6 +176,7 @@ describe('PusoyDosGame turns', () => {
     game.play('a', ['8H']);
     assert.throws(() => game.play('b', ['8C']), { code: 'too-low' });
     assert.throws(() => game.play('b', ['8C', '8D']), { code: 'wrong-size' });
+    assert.throws(() => game.play('b', ['8C', '9C']), { code: 'wrong-size' }); // not "invalid combo"
     game.play('b', ['8D']);
     assert.deepEqual(game.discardPile.cards.map(String), ['8♥']);
     assert.equal(game.trick.cards[0].id, '8D');
