@@ -80,6 +80,11 @@ Pusoy Dos ("Big Two") rules as implemented:
    row, the last player to play clears the table and leads anything.
 6. The first player to get rid of all their cards wins.
 
+In either game you can arrange your own hand with the **Value / Suit / Free** buttons: by the
+game's card order, grouped by suit (♣ ♠ ♥ ♦), or in any order you like by dragging cards (on a
+touch screen, press and hold a card first; with a keyboard, Alt + ←/→ moves the focused card).
+Dragging switches to Free. The arrangement only exists in your browser tab.
+
 A player who runs out of time passes (or, when leading, plays their lowest card). If a player
 leaves, their cards are set aside; if theirs was the play on the table, the next player leads.
 
@@ -226,6 +231,7 @@ public/
   index.html             Game page
   css/style.css          Styles (light/dark, phone layout)
   js/cards.js            Renders playing cards
+  js/handArranger.js     Arranging your own hand: by value, by suit, or by dragging
   js/client.js           Browser client
 test/                    Unit tests for every class, plus a Socket.IO integration test
 ```

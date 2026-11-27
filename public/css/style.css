@@ -279,6 +279,32 @@ button.pile__stack:disabled { cursor: default; }
 
 .last-draw { margin: 0; min-height: 1.45em; font-weight: 600; text-align: center; }
 
+.hand-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.hand-head .section-title { margin: 0; }
+.arrange { display: inline-flex; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 10px; overflow: hidden; }
+.arrange__option {
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 4px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--felt-fg);
+  cursor: pointer;
+}
+.arrange__option + .arrange__option { border-left: 1px solid rgba(255, 255, 255, 0.35); }
+.arrange__option[aria-pressed="true"] { background: var(--felt-fg); color: var(--felt-dark); }
+.arrange__option:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+.arrange__hint { margin: 0; }
+@media (hover: none) { .keyboard-tip { display: none; } }
+
 .hand { display: flex; flex-wrap: wrap; gap: 6px; min-height: var(--card-h); padding-top: 10px; }
 
 .result {
@@ -349,6 +375,11 @@ button.pile__stack:disabled { cursor: default; }
 button.card--back { cursor: pointer; }
 .card--selectable { padding: 0; font: inherit; font-weight: 700; cursor: pointer; transition: transform 0.15s ease; }
 .card--selectable:disabled { cursor: default; }
+.hand .card { -webkit-touch-callout: none; }
+.card--lifted { transform: translateY(-6px) scale(1.06); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35); }
+.card--dragging { z-index: 10; cursor: grabbing; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4); transition: none; opacity: 0.9; }
+.card--drop-before { box-shadow: -5px 0 0 var(--turn), var(--card-shadow); }
+.card--drop-after { box-shadow: 5px 0 0 var(--turn), var(--card-shadow); }
 .card--selected { transform: translateY(-10px); box-shadow: 0 0 0 3px var(--turn), var(--card-shadow); }
 .card--pickable { transition: transform 0.15s ease; }
 .card--pickable:hover { transform: translateY(-6px); }

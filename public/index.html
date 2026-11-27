@@ -48,7 +48,15 @@
       </div>
 
       <div class="hand-wrap">
-        <h2 class="section-title">Your hand <span id="hand-count" class="count"></span></h2>
+        <div class="hand-head">
+          <h2 class="section-title">Your hand <span id="hand-count" class="count"></span></h2>
+          <div class="arrange" role="group" aria-label="Arrange your hand">
+            <button type="button" class="arrange__option" data-arrange="value">Value</button>
+            <button type="button" class="arrange__option" data-arrange="suit">Suit</button>
+            <button type="button" class="arrange__option" data-arrange="free">Free</button>
+          </div>
+        </div>
+        <p id="arrange-hint" class="hint arrange__hint">Drag cards to rearrange them (on a touch screen, press and hold first).<span class="keyboard-tip"> Alt + ←/→ moves a focused card.</span></p>
         <div id="hand" class="hand"></div>
         <div id="play-controls" class="actions play-controls" hidden>
           <button id="play" type="button" class="button button--primary">Play</button>
@@ -131,6 +139,7 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/cards.js"></script>
+  <script src="/js/handArranger.js"></script>
   <script src="/js/client.js"></script>
 </body>
 </html>

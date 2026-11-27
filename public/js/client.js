@@ -1,4 +1,4 @@
-/* global io, CardView */
+/* global io, CardView, HandArranger */
 'use strict';
 
 (() => {
@@ -80,6 +80,8 @@
     selection: $('selection'),
     hand: $('hand'),
     handCount: $('hand-count'),
+    arrangeOptions: document.querySelectorAll('[data-arrange]'),
+    arrangeHint: $('arrange-hint'),
     result: $('result'),
     log: $('log'),
     players: $('players'),
@@ -242,10 +244,33 @@
     return `${lastDraw.to} took your ${card}.`;
   }
 
+  // ---- arranging your hand -----------------------------------------------
+
+  const arranger = HandArranger.create({
+    container: ui.hand,
+    onChange: () => renderHandOnly(lastState?.game),
+  });
+
+  /** Re-renders just the hand (after a local change such as rearranging). */
+  function renderHandOnly(game) {
+    if (!game) return;
+    if (game.type === GameType.PUSOY_DOS) renderPusoyHand(game);
+    else renderHand(game);
+  }
+
+  function renderArrangeControls(cardCount) {
+    ui.arrangeOptions.forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset.arrange === arranger.mode));
+    });
+    ui.arrangeHint.hidden = arranger.mode !== HandArranger.Mode.FREE || cardCount < 2;
+  }
+
   function renderHand(game) {
-    const cards = game.hand ?? [];
+    if (arranger.isDragging) return; // re-rendered when the drag ends
+    const cards = arranger.arrange(game.hand ?? []);
     ui.hand.closest('.hand-wrap').hidden = !game.isPlaying;
     ui.handCount.textContent = `(${cards.length})`;
+    renderArrangeControls(cards.length);
     ui.hand.replaceChildren(...cards.map((card) => CardView.face(card)));
     if (game.isPlaying && cards.length === 0) {
       ui.hand.appendChild(make('p', 'hint', game.result ? 'No cards left.' : 'No cards — you can still draw from the pile.'));
@@ -278,12 +303,14 @@
   }
 
   function renderPusoyHand(game) {
-    const cards = game.hand ?? [];
+    if (arranger.isDragging) return; // re-rendered when the drag ends
+    const cards = arranger.arrange(game.hand ?? []);
     const canAct = game.isYourTurn && !game.result;
     // Forget picks that are no longer in the hand (played, or a new game).
     selected = new Set(cards.map((card) => card.id).filter((id) => selected.has(id)));
     ui.hand.closest('.hand-wrap').hidden = !game.isPlaying;
     ui.handCount.textContent = `(${cards.length})`;
+    renderArrangeControls(cards.length);
     ui.hand.replaceChildren(...cards.map((card) => CardView.selectable(card, {
       selected: selected.has(card.id),
       disabled: Boolean(game.result),
@@ -452,13 +479,16 @@
   // ---- events --------------------------------------------------------------
 
   ui.drawPile.addEventListener('click', () => socket.emit(Events.DRAW_FROM_PILE));
+  ui.arrangeOptions.forEach((button) => {
+    button.addEventListener('click', () => arranger.setMode(button.dataset.arrange));
+  });
   ui.play.addEventListener('click', () => {
     if (selected.size > 0) socket.emit(Events.PLAY_CARDS, [...selected]);
   });
   ui.pass.addEventListener('click', () => socket.emit(Events.PASS));
   ui.clearSelection.addEventListener('click', () => {
     selected.clear();
-    if (lastState?.game) renderPusoyHand(lastState.game);
+    renderHandOnly(lastState?.game);
   });
   ui.gameType.addEventListener('change', () => {
     socket.emit(Events.UPDATE_SETTINGS, { game: ui.gameType.value });
@@ -483,6 +513,8 @@
   socket.on(Events.STATE, (state) => {
     if (!state) return;
     storage.set(state.you.name);
+    // A new deal: forget the free arrangement of the last game's cards.
+    if (state.phase === Phase.PLAYING && lastState?.phase !== Phase.PLAYING) arranger.reset();
     lastState = state;
     render(state);
   });

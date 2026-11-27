@@ -21,6 +21,7 @@ window.CardView = (() => {
   /** Fills `el` with a card face. */
   function paintFace(el, card, extraClass) {
     el.className = `card ${RED_SUITS.has(card.suit) ? 'card--red' : 'card--black'} ${extraClass}`.trim();
+    if (card.id) el.dataset.cardId = card.id;
     const symbol = SUIT_SYMBOLS[card.suit];
     for (const corner of ['top', 'bottom']) {
       const span = document.createElement('span');
