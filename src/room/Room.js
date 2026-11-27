@@ -4,7 +4,9 @@ const { Player } = require('./Player');
 const { NameAllocator } = require('./NameAllocator');
 const { KickVote } = require('./KickVote');
 const { OldMaidGame } = require('../game/OldMaidGame');
+const { PusoyDosGame } = require('../game/PusoyDosGame');
 const { GameSettings } = require('../game/GameSettings');
+const { GAMES, gameFor } = require('../game/games');
 const { ActionError } = require('../errors');
 const { Phase, KickReason } = require('../constants');
 
@@ -64,7 +66,7 @@ class Room {
     /** @type {string|null} */
     this.hostId = null;
     this.settings = new GameSettings();
-    /** @type {OldMaidGame|null} */
+    /** @type {OldMaidGame|PusoyDosGame|null} */
     this.game = null;
     this.hostKickVote = new KickVote(hostKickVotes);
     this.names = new NameAllocator();
@@ -147,10 +149,11 @@ class Room {
   startGame(id) {
     this.assertHost(id);
     if (this.phase === Phase.PLAYING) throw new ActionError('game-running', 'A game is already running.');
-    const playerIds = this.memberIds.slice(0, OldMaidGame.MAX_PLAYERS);
+    const { title, Game } = gameFor(this.settings.game);
+    const playerIds = this.memberIds.slice(0, Game.MAX_PLAYERS);
     this.departedNames.clear();
-    this.game = new OldMaidGame({ playerIds, settings: this.settings, rng: this.rng });
-    this.announce(`${this.nameOf(id)} started a game.`);
+    this.game = new Game({ playerIds, settings: this.settings, rng: this.rng });
+    this.announce(`${this.nameOf(id)} started a game of ${title}.`);
     this.changed();
   }
 
@@ -209,15 +212,27 @@ class Room {
 
   // ---- game actions --------------------------------------------------------
 
-  /** @param {string} id @param {unknown} index - untrusted */
+  /** Old Maid. @param {string} id @param {unknown} index - untrusted */
   drawFromPlayer(id, index) {
-    this.requireGame().drawFromPlayer(id, index);
+    this.requireGame(OldMaidGame).drawFromPlayer(id, index);
     this.changed();
   }
 
-  /** @param {string} id */
+  /** Old Maid. @param {string} id */
   drawFromPile(id) {
-    this.requireGame().drawFromPile(id);
+    this.requireGame(OldMaidGame).drawFromPile(id);
+    this.changed();
+  }
+
+  /** Pusoy Dos. @param {string} id @param {unknown} cardIds - untrusted */
+  playCards(id, cardIds) {
+    this.requireGame(PusoyDosGame).play(id, cardIds);
+    this.changed();
+  }
+
+  /** Pusoy Dos. @param {string} id */
+  pass(id) {
+    this.requireGame(PusoyDosGame).pass(id);
     this.changed();
   }
 
@@ -227,7 +242,8 @@ class Room {
     if (!game || game.isOver) return;
     const id = game.currentPlayerId;
     game.autoPlay(id);
-    this.announce(`${this.nameOf(id)} ran out of time; a card was drawn for them.`);
+    const move = game instanceof OldMaidGame ? 'a card was drawn' : 'a move was made';
+    this.announce(`${this.nameOf(id)} ran out of time; ${move} for them.`);
     this.changed();
   }
 
@@ -239,6 +255,7 @@ class Room {
     if (!me) return null;
     const isHost = id === this.hostId;
     const phase = this.phase;
+    const { Game } = gameFor(this.settings.game);
     const playerCount = Math.min(this.members.size, OldMaidGame.MAX_PLAYERS);
     const seated = new Set(this.game ? this.game.playerIds : []);
 
@@ -257,8 +274,14 @@ class Room {
         ...this.settings.toJSON(),
         maxCardsPerPlayer: OldMaidGame.maxCardsPerPlayer(playerCount),
       },
-      limits: { minPlayers: OldMaidGame.MIN_PLAYERS, maxPlayers: OldMaidGame.MAX_PLAYERS },
-      canStart: isHost && phase !== Phase.PLAYING && this.members.size >= OldMaidGame.MIN_PLAYERS,
+      games: Object.entries(GAMES).map(([type, { title, Game: G }]) => ({
+        type,
+        title,
+        minPlayers: G.MIN_PLAYERS,
+        maxPlayers: G.MAX_PLAYERS,
+      })),
+      limits: { minPlayers: Game.MIN_PLAYERS, maxPlayers: Game.MAX_PLAYERS },
+      canStart: isHost && phase !== Phase.PLAYING && this.members.size >= Game.MIN_PLAYERS,
       hostVote: {
         votes: this.hostKickVote.count,
         needed: this.hostKickVote.needed,
@@ -328,10 +351,16 @@ class Room {
     this.turnDeadline = null;
   }
 
-  /** @private */
-  requireGame() {
+  /**
+   * @private
+   * @template {typeof OldMaidGame | typeof PusoyDosGame} G
+   * @param {G} Game - the game the action belongs to
+   * @returns {InstanceType<G>}
+   */
+  requireGame(Game) {
     if (!this.game) throw new ActionError('no-game', 'No game is running.');
-    return this.game;
+    if (!(this.game instanceof Game)) throw new ActionError('wrong-game', "That move isn't part of this game.");
+    return /** @type {InstanceType<G>} */ (this.game);
   }
 
   /** @private */

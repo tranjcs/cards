@@ -6,20 +6,40 @@ const { ActionError } = require('../errors');
 const DEAL_ALL = 0;
 const MAX_CARDS_PER_PLAYER = 51;
 
+/** The games the host can choose from (see src/game/games.js). */
+const GameType = Object.freeze({
+  OLD_MAID: 'old-maid',
+  PUSOY_DOS: 'pusoy-dos',
+});
+const GAME_TYPES = Object.freeze(Object.values(GameType));
+
 /**
  * Options the host picks before a game. Immutable: changes produce a new instance.
  *
- * Only the deal size is configurable for now. Future rule options (how many cards
- * per turn, skips, showing or hiding hands, piles on or off) belong here too.
+ * `game` picks which game is played; `cardsPerPlayer` is the Old Maid deal size.
+ * Future rule options (how many cards per turn, skips, showing or hiding hands,
+ * piles on or off) belong here too.
  */
 class GameSettings {
   /**
    * @param {object} [options]
+   * @param {string} [options.game] - one of GAME_TYPES
    * @param {number} [options.cardsPerPlayer] - DEAL_ALL (0) deals the whole deck
    */
-  constructor({ cardsPerPlayer = DEAL_ALL } = {}) {
+  constructor({ game = GameType.OLD_MAID, cardsPerPlayer = DEAL_ALL } = {}) {
+    this.game = GameSettings.parseGame(game);
     this.cardsPerPlayer = GameSettings.parseCardsPerPlayer(cardsPerPlayer);
     Object.freeze(this);
+  }
+
+  /**
+   * Validates an untrusted value.
+   * @param {unknown} value
+   * @returns {string}
+   */
+  static parseGame(value) {
+    if (!GAME_TYPES.includes(value)) throw new ActionError('invalid-settings', 'Pick one of the games.');
+    return /** @type {string} */ (value);
   }
 
   /**
@@ -45,8 +65,8 @@ class GameSettings {
     if (typeof changes !== 'object' || changes === null) {
       throw new ActionError('invalid-settings', 'Settings must be an object.');
     }
-    const { cardsPerPlayer = this.cardsPerPlayer } = changes;
-    return new GameSettings({ cardsPerPlayer });
+    const { game = this.game, cardsPerPlayer = this.cardsPerPlayer } = changes;
+    return new GameSettings({ game, cardsPerPlayer });
   }
 
   get dealsAll() {
@@ -54,8 +74,8 @@ class GameSettings {
   }
 
   toJSON() {
-    return { cardsPerPlayer: this.cardsPerPlayer };
+    return { game: this.game, cardsPerPlayer: this.cardsPerPlayer };
   }
 }
 
-module.exports = { GameSettings, DEAL_ALL, MAX_CARDS_PER_PLAYER };
+module.exports = { GameSettings, GameType, GAME_TYPES, DEAL_ALL, MAX_CARDS_PER_PLAYER };

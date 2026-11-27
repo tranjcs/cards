@@ -18,16 +18,10 @@ window.CardView = (() => {
     return `${RANK_NAMES[card.rank] ?? card.rank} of ${card.suit}`;
   }
 
-  /**
-   * A face-up card.
-   * @param {{ rank: string, suit: string }} card
-   * @param {string} [extraClass]
-   */
-  function face(card, extraClass = '') {
-    const el = document.createElement('div');
+  /** Fills `el` with a card face. */
+  function paintFace(el, card, extraClass) {
     el.className = `card ${RED_SUITS.has(card.suit) ? 'card--red' : 'card--black'} ${extraClass}`.trim();
-    el.setAttribute('role', 'img');
-    el.setAttribute('aria-label', spokenName(card));
+    if (card.id) el.dataset.cardId = card.id;
     const symbol = SUIT_SYMBOLS[card.suit];
     for (const corner of ['top', 'bottom']) {
       const span = document.createElement('span');
@@ -41,6 +35,36 @@ window.CardView = (() => {
     pip.setAttribute('aria-hidden', 'true');
     pip.textContent = card.rank === 'Q' ? `👑${symbol}` : symbol;
     el.appendChild(pip);
+    return el;
+  }
+
+  /**
+   * A face-up card.
+   * @param {{ rank: string, suit: string }} card
+   * @param {string} [extraClass]
+   */
+  function face(card, extraClass = '') {
+    const el = paintFace(document.createElement('div'), card, extraClass);
+    el.setAttribute('role', 'img');
+    el.setAttribute('aria-label', spokenName(card));
+    return el;
+  }
+
+  /**
+   * A face-up card the player can select or deselect (a toggle button).
+   * @param {{ rank: string, suit: string }} card
+   * @param {object} options
+   * @param {boolean} options.selected
+   * @param {boolean} [options.disabled]
+   * @param {() => void} options.onClick
+   */
+  function selectable(card, { selected, disabled = false, onClick }) {
+    const el = paintFace(document.createElement('button'), card, `card--selectable${selected ? ' card--selected' : ''}`);
+    el.type = 'button';
+    el.disabled = disabled;
+    el.setAttribute('aria-pressed', String(selected));
+    el.setAttribute('aria-label', spokenName(card));
+    el.addEventListener('click', onClick);
     return el;
   }
 
@@ -64,5 +88,5 @@ window.CardView = (() => {
     return el;
   }
 
-  return { face, back, label, spokenName };
+  return { face, selectable, back, label, spokenName };
 })();

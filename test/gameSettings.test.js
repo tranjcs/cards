@@ -20,6 +20,16 @@ describe('GameSettings', () => {
     assert.equal(changed.with({}).cardsPerPlayer, 7);
   });
 
+  it('picks the game, Old Maid by default', () => {
+    assert.equal(new GameSettings().game, 'old-maid');
+    const pusoy = new GameSettings().with({ game: 'pusoy-dos' });
+    assert.equal(pusoy.game, 'pusoy-dos');
+    assert.deepEqual(pusoy.with({ cardsPerPlayer: 3 }).toJSON(), { game: 'pusoy-dos', cardsPerPlayer: 3 });
+    for (const value of ['poker', null, 1, '__proto__']) {
+      assert.throws(() => new GameSettings().with({ game: value }), ActionError, `game ${value}`);
+    }
+  });
+
   it('rejects invalid values', () => {
     for (const value of [-1, 1.5, '5', 52, null]) {
       assert.throws(() => new GameSettings().with({ cardsPerPlayer: value }), ActionError, `value ${value}`);
