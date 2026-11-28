@@ -78,6 +78,7 @@
     askTargets: $('ask-targets'),
     askRanks: $('ask-ranks'),
     lastDraw: $('last-draw'),
+    feltLogo: $('felt-logo'),
     piles: $('piles'),
     trick: $('trick'),
     trickLabel: $('trick-label'),
@@ -126,6 +127,27 @@
     listEl.replaceChildren(...lines.map((line) => make('li', '', line)));
   }
 
+  const AVATARS = ['🐻', '🦊', '🐸', '🐼', '🐷', '🐨', '🐯', '🐰', '🐵', '🐱', '🐶', '🦁'];
+
+  /** A round avatar with an animal and a colour picked from the player's name. */
+  function avatar(name, className = 'avatar') {
+    const number = Number(name.replace(/\D/g, ''));
+    const seed = number || [...name].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+    const el = make('span', className, AVATARS[seed % AVATARS.length]);
+    el.style.setProperty('--hue', String((seed * 47) % 360));
+    el.setAttribute('aria-hidden', 'true');
+    return el;
+  }
+
+  /** Lays cards out as a fan by giving each its index and the count. */
+  function fan(cards) {
+    cards.forEach((card, index) => {
+      card.style.setProperty('--i', String(index));
+      card.style.setProperty('--n', String(cards.length));
+    });
+    return cards;
+  }
+
   // ---- timer -------------------------------------------------------------
 
   let timerInterval = null;
@@ -143,6 +165,11 @@
       ui.timer.textContent = `${who} · ${Math.ceil(remaining / 1000)}s`;
       ui.timerFill.style.width = `${(remaining / game.turnTimeoutMs) * 100}%`;
       ui.timerFill.classList.toggle('turn-timer__fill--low', remaining < 5000);
+      const ring = ui.seats.querySelector('.seat--turn .seat__ring');
+      if (ring) {
+        ring.style.setProperty('--p', String(remaining / game.turnTimeoutMs));
+        ring.classList.toggle('seat__ring--low', remaining < 5000);
+      }
       if (remaining === 0) clearInterval(timerInterval);
     };
     tick();
@@ -203,9 +230,30 @@
 
   // ---- table -------------------------------------------------------------
 
+  function seatBadge(seat) {
+    if (seat.isLoser) return 'old maid';
+    if (seat.isWinner) return 'winner';
+    if (seat.isSafe) return 'safe';
+    if (seat.isOut) return 'out';
+    if (seat.isTurn) return 'turn';
+    if (seat.hasPassed) return 'passed';
+    if (seat.isLeader) return 'on the table';
+    return '';
+  }
+
   function renderSeats(game) {
-    ui.seats.replaceChildren(...game.seats.map((seat) => {
+    // Seat everyone around the oval, starting with you at the bottom (or the
+    // first player when watching) and going clockwise.
+    const count = game.seats.length;
+    const first = Math.max(0, game.seats.findIndex((seat) => seat.isYou));
+    ui.seats.replaceChildren(...game.seats.map((seat, index) => {
+      const position = (index - first + count) % count;
+      const angle = 90 + (position * 360) / count;
+      const radians = (angle * Math.PI) / 180;
       const li = make('li', 'seat');
+      li.style.setProperty('--cx', Math.cos(radians).toFixed(4));
+      li.style.setProperty('--cy', Math.sin(radians).toFixed(4));
+      li.style.setProperty('--face', `${angle - 90}deg`);
       // Boolean(): toggle(name, undefined) flips the class instead of removing it, and
       // each game only sends the flags it uses.
       li.classList.toggle('seat--turn', Boolean(seat.isTurn));
@@ -216,29 +264,27 @@
       li.classList.toggle('seat--winner', Boolean(seat.isWinner));
       li.classList.toggle('seat--passed', Boolean(seat.hasPassed));
 
-      const name = make('span', 'seat__name', seat.isYou ? `${seat.name} (you)` : seat.name);
-      const count = make('span', 'seat__count', `${seat.cardCount} ${seat.cardCount === 1 ? 'card' : 'cards'}`);
-      const fan = make('div', 'seat__fan');
-      if (seat.hand) {
-        seat.hand.forEach((card) => fan.appendChild(CardView.face(card, 'card--mini')));
-      } else {
-        const shown = Math.min(seat.cardCount, 8);
-        for (let i = 0; i < shown; i += 1) fan.appendChild(CardView.back({ extraClass: 'card--mini' }));
-      }
-      const badges = [];
-      if (seat.isTurn) badges.push('turn');
-      if (seat.isSafe) badges.push('safe');
-      if (seat.isLoser) badges.push('old maid');
-      if (seat.isWinner) badges.push('winner');
-      if (seat.isLeader) badges.push('on the table');
-      if (seat.hasPassed) badges.push('passed');
-      if (seat.isOut) badges.push('out');
-      li.append(name, count, fan);
+      const cards = seat.hand
+        ? seat.hand.map((card) => CardView.face(card, 'card--mini'))
+        : Array.from({ length: Math.min(seat.cardCount, 7) }, () => CardView.back({ extraClass: 'card--mini' }));
+      const cardFan = make('div', 'seat__fan');
+      cardFan.append(...fan(cards));
+
+      const ring = make('div', 'seat__ring');
+      ring.appendChild(avatar(seat.name, 'avatar seat__avatar'));
+      const badge = seatBadge(seat);
+      if (badge) ring.appendChild(make('span', 'seat__badge', badge));
+
+      const chip = make('div', 'seat__chip');
+      chip.append(
+        make('span', 'seat__name', seat.isYou ? 'You' : seat.name),
+        make('span', 'seat__count', `${seat.cardCount} ${seat.cardCount === 1 ? 'card' : 'cards'}`),
+      );
       if (seat.books) {
-        const books = seat.books.length ? seat.books.join(' ') : 'none yet';
-        li.appendChild(make('span', 'seat__books', `Books (${seat.books.length}): ${books}`));
+        const books = seat.books.length ? `: ${seat.books.join(' ')}` : '';
+        chip.appendChild(make('span', 'seat__books', `${seat.books.length} ${seat.books.length === 1 ? 'book' : 'books'}${books}`));
       }
-      if (badges.length) li.appendChild(make('span', 'seat__badge', badges.join(' · ')));
+      li.append(cardFan, ring, chip);
       return li;
     }));
   }
@@ -247,6 +293,7 @@
     const canDraw = Boolean(game.canDrawFromPile || game.canGoFish);
     ui.drawPile.replaceChildren();
     if (game.drawPile.count > 0) ui.drawPile.appendChild(CardView.back());
+    ui.drawPile.classList.toggle('pile__stack--deep', game.drawPile.count > 1);
     ui.drawPile.disabled = !canDraw;
     ui.drawPile.classList.toggle('pile__stack--active', canDraw);
     ui.drawPile.setAttribute('aria-label', `Draw pile, ${game.drawPile.count} cards${canDraw ? ': click to draw' : ''}`);
@@ -266,11 +313,10 @@
     if (!show) return;
     const { name, cardCount } = game.target;
     ui.pickLabel.textContent = `Pick a card from ${name}:`;
-    ui.pickCards.replaceChildren(...Array.from({ length: cardCount }, (_, index) => CardView.back({
-      extraClass: 'card--pickable',
+    ui.pickCards.replaceChildren(...fan(Array.from({ length: cardCount }, (_, index) => CardView.back({
       label: `Take card ${index + 1} of ${cardCount} from ${name}`,
       onClick: () => socket.emit(Events.DRAW_FROM_PLAYER, index),
-    })));
+    }))));
   }
 
   // ---- Go Fish -----------------------------------------------------------
@@ -341,7 +387,7 @@
     ui.hand.closest('.hand-wrap').hidden = !game.isPlaying;
     ui.handCount.textContent = `(${cards.length})`;
     renderArrangeControls(cards.length);
-    ui.hand.replaceChildren(...cards.map((card) => CardView.face(card)));
+    ui.hand.replaceChildren(...fan(cards.map((card) => CardView.face(card))));
     if (game.isPlaying && cards.length === 0) {
       const waiting = game.type === GameType.GO_FISH
         ? "No cards — you'll draw one on your turn."
@@ -384,7 +430,7 @@
     ui.hand.closest('.hand-wrap').hidden = !game.isPlaying;
     ui.handCount.textContent = `(${cards.length})`;
     renderArrangeControls(cards.length);
-    ui.hand.replaceChildren(...cards.map((card) => CardView.selectable(card, {
+    ui.hand.replaceChildren(...fan(cards.map((card) => CardView.selectable(card, {
       selected: selected.has(card.id),
       disabled: Boolean(game.result),
       onClick: () => {
@@ -393,7 +439,7 @@
         else showToast(`You can play at most ${MAX_PLAY_SIZE} cards.`);
         renderPusoyHand(game);
       },
-    })));
+    }))));
     if (game.isPlaying && cards.length === 0) ui.hand.appendChild(make('p', 'hint', 'No cards left.'));
 
     ui.playControls.hidden = !game.isPlaying || Boolean(game.result);
@@ -427,10 +473,14 @@
   function renderTable(state) {
     const { game } = state;
     ui.table.hidden = !game;
-    renderTimer(game);
-    if (!game) return;
+    if (!game) {
+      renderTimer(null);
+      return;
+    }
     const pusoy = game.type === GameType.PUSOY_DOS;
     renderSeats(game);
+    renderTimer(game);
+    ui.feltLogo.textContent = titleOf(state);
     ui.piles.hidden = pusoy;
     ui.lastDraw.hidden = pusoy;
     ui.trick.hidden = !pusoy;
@@ -457,7 +507,7 @@
     ui.playerCount.textContent = `(${state.members.length})`;
     ui.players.replaceChildren(...state.members.map((member) => {
       const li = make('li', 'player');
-      li.appendChild(make('span', 'avatar', member.name.replace(/\D/g, '') || member.name.charAt(0)));
+      li.appendChild(avatar(member.name));
       const name = make('span', 'player__name', member.name);
       if (member.isHost) name.appendChild(make('span', 'tag tag--host', 'host'));
       if (member.isYou) name.appendChild(make('span', 'tag', 'you'));

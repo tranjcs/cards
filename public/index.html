@@ -31,42 +31,58 @@
     <p id="status" class="status" role="status" aria-live="polite">Connecting…</p>
 
     <section id="table" class="panel table" aria-label="Card table" hidden>
-      <div class="turn-timer" aria-hidden="true">
-        <div id="timer-fill" class="turn-timer__fill"></div>
-      </div>
-      <p id="timer" class="timer" role="timer"></p>
-
-      <ol id="seats" class="seats" aria-label="Players, clockwise"></ol>
-
-      <div id="piles" class="piles">
-        <div class="pile">
-          <button id="draw-pile" type="button" class="pile__stack" aria-label="Draw pile"></button>
-          <span id="draw-count" class="pile__label"></span>
-        </div>
-        <div id="discard-wrap" class="pile">
-          <div id="discard-pile" class="pile__stack pile__stack--discard" aria-label="Discard pile"></div>
-          <span id="discard-count" class="pile__label"></span>
+      <div class="hud">
+        <p id="timer" class="timer" role="timer"></p>
+        <div class="turn-timer" aria-hidden="true">
+          <div id="timer-fill" class="turn-timer__fill"></div>
         </div>
       </div>
 
-      <div id="pick" class="pick" hidden>
-        <p id="pick-label" class="pick__label"></p>
-        <div id="pick-cards" class="pick__cards"></div>
+      <div class="arena">
+        <div class="rail">
+          <div class="felt">
+            <span id="felt-logo" class="felt__logo" aria-hidden="true"></span>
+            <div class="center">
+              <div id="pick" class="pick" hidden>
+                <p id="pick-label" class="pick__label"></p>
+                <div id="pick-cards" class="fan fan--pick"></div>
+              </div>
+
+              <div id="piles" class="piles">
+                <div class="pile">
+                  <button id="draw-pile" type="button" class="pile__stack" aria-label="Draw pile"></button>
+                  <span id="draw-count" class="pile__label"></span>
+                </div>
+                <div id="discard-wrap" class="pile">
+                  <div id="discard-pile" class="pile__stack pile__stack--discard" aria-label="Discard pile"></div>
+                  <span id="discard-count" class="pile__label"></span>
+                </div>
+              </div>
+
+              <div id="trick" class="trick" hidden>
+                <div id="trick-cards" class="trick__cards"></div>
+                <p id="trick-label" class="trick__label"></p>
+              </div>
+
+              <p id="last-draw" class="last-draw" aria-live="polite"></p>
+            </div>
+          </div>
+        </div>
+        <ol id="seats" class="seats" aria-label="Players, clockwise"></ol>
       </div>
 
-      <div id="ask" class="pick" hidden>
-        <p class="pick__label">Ask who?</p>
-        <div id="ask-targets" class="ask__options"></div>
-        <p class="pick__label">For which rank?</p>
-        <div id="ask-ranks" class="ask__options"></div>
+      <div id="ask" class="ask" hidden>
+        <div class="ask__group">
+          <p class="ask__label">Ask who?</p>
+          <div id="ask-targets" class="ask__options"></div>
+        </div>
+        <div class="ask__group">
+          <p class="ask__label">For which rank?</p>
+          <div id="ask-ranks" class="ask__options"></div>
+        </div>
       </div>
 
-      <p id="last-draw" class="last-draw" aria-live="polite"></p>
-
-      <div id="trick" class="trick" hidden>
-        <p id="trick-label" class="trick__label"></p>
-        <div id="trick-cards" class="trick__cards"></div>
-      </div>
+      <div id="result" class="result" hidden></div>
 
       <div class="hand-wrap">
         <div class="hand-head">
@@ -78,18 +94,16 @@
           </div>
         </div>
         <p id="arrange-hint" class="hint arrange__hint">Drag cards to rearrange them (on a touch screen, press and hold first).<span class="keyboard-tip"> Alt + ←/→ moves a focused card.</span></p>
-        <div id="hand" class="hand"></div>
+        <div id="hand" class="hand fan fan--hand"></div>
         <div id="play-controls" class="actions play-controls" hidden>
-          <button id="play" type="button" class="button button--primary">Play</button>
-          <button id="pass" type="button" class="button button--ghost">Pass</button>
+          <button id="pass" type="button" class="button button--danger">Pass</button>
           <button id="clear-selection" type="button" class="button button--ghost">Clear</button>
           <span id="selection" class="selection" aria-live="polite"></span>
+          <button id="play" type="button" class="button button--go">Play</button>
         </div>
       </div>
 
-      <div id="result" class="result" hidden></div>
-
-      <details class="log" open>
+      <details class="log">
         <summary>Game log</summary>
         <ul id="log" class="log__list"></ul>
       </details>
