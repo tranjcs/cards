@@ -17,13 +17,18 @@
     DRAW_FROM_PILE: 'draw-from-pile',
     PLAY_CARDS: 'play-cards',
     PASS: 'pass',
+    ASK: 'ask',
+    GO_FISH: 'go-fish',
     ACTIVE: 'active',
   };
-  const GameType = { OLD_MAID: 'old-maid', PUSOY_DOS: 'pusoy-dos' };
+  const GameType = { OLD_MAID: 'old-maid', PUSOY_DOS: 'pusoy-dos', GO_FISH: 'go-fish' };
   const SETTINGS_HINTS = {
     [GameType.OLD_MAID]: "Old Maid uses the 52-card deck minus the Q♣. Cards that aren't dealt form the draw pile.",
     [GameType.PUSOY_DOS]: 'Pusoy Dos is for 2 to 4 players: 13 cards each (17 with three). 3 is low, 2 is high.',
+    [GameType.GO_FISH]: 'Go Fish uses the full deck: 7 cards each, or 5 with four or more players. The rest form the pile.',
   };
+  const RANK_PLURALS = { A: 'Aces', J: 'Jacks', Q: 'Queens', K: 'Kings', 6: 'Sixes' };
+  const rankPlural = (rank) => RANK_PLURALS[rank] ?? `${rank}s`;
   const MAX_PLAY_SIZE = 5;
   const KICK_MESSAGES = {
     host: 'The host removed you from the room.',
@@ -63,11 +68,15 @@
     seats: $('seats'),
     drawPile: $('draw-pile'),
     drawCount: $('draw-count'),
+    discardWrap: $('discard-wrap'),
     discardPile: $('discard-pile'),
     discardCount: $('discard-count'),
     pick: $('pick'),
     pickLabel: $('pick-label'),
     pickCards: $('pick-cards'),
+    ask: $('ask'),
+    askTargets: $('ask-targets'),
+    askRanks: $('ask-ranks'),
     lastDraw: $('last-draw'),
     piles: $('piles'),
     trick: $('trick'),
@@ -149,6 +158,7 @@
       return state.you.isHost ? 'Pick the settings and start the game.' : `Waiting for ${state.host} to start the game…`;
     }
     if (game.type === GameType.PUSOY_DOS) return pusoyStatusText(state);
+    if (game.type === GameType.GO_FISH) return goFishStatusText(game);
     if (phase === Phase.FINISHED) {
       if (!game.result.loser) return 'Game over: not enough players.';
       return game.result.youLost ? "You're stuck with the Old Maid!" : `${game.result.loser} is stuck with the Old Maid!`;
@@ -177,6 +187,20 @@
     return `Your turn! Beat the ${game.table.name} with ${n} ${n === 1 ? 'card' : 'cards'}, or pass.`;
   }
 
+  function goFishStatusText(game) {
+    if (game.result) return goFishResultText(game.result);
+    if (!game.isPlaying) return `Watching: ${game.turn}'s turn. You'll be dealt in next game.`;
+    if (!game.isYourTurn) return `${game.turn}'s turn…`;
+    return game.canGoFish ? 'Your turn! Nobody else has cards: go fish from the pile.' : 'Your turn! Ask a player for a rank you hold.';
+  }
+
+  function goFishResultText(result) {
+    const { winners, youWon } = result;
+    if (!winners.length) return 'Game over: not enough players.';
+    if (winners.length > 1) return `${youWon ? 'You tied for the win' : 'A tie'}: ${winners.join(', ')}!`;
+    return youWon ? 'You win with the most books!' : `${winners[0]} wins with the most books!`;
+  }
+
   // ---- table -------------------------------------------------------------
 
   function renderSeats(game) {
@@ -187,7 +211,7 @@
       li.classList.toggle('seat--turn', Boolean(seat.isTurn));
       li.classList.toggle('seat--you', Boolean(seat.isYou));
       li.classList.toggle('seat--target', Boolean(seat.isTarget));
-      li.classList.toggle('seat--safe', Boolean(seat.isSafe));
+      li.classList.toggle('seat--safe', Boolean(seat.isSafe || seat.isOut));
       li.classList.toggle('seat--loser', Boolean(seat.isLoser));
       li.classList.toggle('seat--winner', Boolean(seat.isWinner));
       li.classList.toggle('seat--passed', Boolean(seat.hasPassed));
@@ -208,19 +232,29 @@
       if (seat.isWinner) badges.push('winner');
       if (seat.isLeader) badges.push('on the table');
       if (seat.hasPassed) badges.push('passed');
+      if (seat.isOut) badges.push('out');
       li.append(name, count, fan);
+      if (seat.books) {
+        const books = seat.books.length ? seat.books.join(' ') : 'none yet';
+        li.appendChild(make('span', 'seat__books', `Books (${seat.books.length}): ${books}`));
+      }
       if (badges.length) li.appendChild(make('span', 'seat__badge', badges.join(' · ')));
       return li;
     }));
   }
 
   function renderPiles(game) {
+    const canDraw = Boolean(game.canDrawFromPile || game.canGoFish);
     ui.drawPile.replaceChildren();
     if (game.drawPile.count > 0) ui.drawPile.appendChild(CardView.back());
-    ui.drawPile.disabled = !game.canDrawFromPile;
-    ui.drawPile.classList.toggle('pile__stack--active', game.canDrawFromPile);
-    ui.drawPile.setAttribute('aria-label', `Draw pile, ${game.drawPile.count} cards${game.canDrawFromPile ? ': click to draw' : ''}`);
+    ui.drawPile.disabled = !canDraw;
+    ui.drawPile.classList.toggle('pile__stack--active', canDraw);
+    ui.drawPile.setAttribute('aria-label', `Draw pile, ${game.drawPile.count} cards${canDraw ? ': click to draw' : ''}`);
     ui.drawCount.textContent = `Draw pile · ${game.drawPile.count}`;
+
+    // Go Fish lays books down by each seat instead of on a discard pile.
+    ui.discardWrap.hidden = !game.discardPile;
+    if (!game.discardPile) return;
 
     ui.discardPile.replaceChildren(...game.discardPile.top.map((card) => CardView.face(card)));
     ui.discardCount.textContent = `Discards · ${game.discardPile.count}`;
@@ -239,7 +273,41 @@
     })));
   }
 
-  function lastDrawText(lastDraw) {
+  // ---- Go Fish -----------------------------------------------------------
+
+  /** Who to ask, remembered by name across state updates. */
+  let askTarget = null;
+
+  function renderAsk(game) {
+    const targets = game.type === GameType.GO_FISH ? game.seats.filter((seat) => seat.isTarget) : [];
+    const show = Boolean(game.isYourTurn && targets.length && game.askableRanks.length);
+    ui.ask.hidden = !show;
+    if (!show) return;
+    if (!targets.some((seat) => seat.name === askTarget)) askTarget = targets[0].name;
+    const target = targets.find((seat) => seat.name === askTarget);
+
+    ui.askTargets.replaceChildren(...targets.map((seat) => {
+      const button = make('button', 'button button--small ask__option', `${seat.name} (${seat.cardCount})`);
+      button.type = 'button';
+      button.setAttribute('aria-pressed', String(seat === target));
+      button.addEventListener('click', () => {
+        askTarget = seat.name;
+        renderAsk(game);
+      });
+      return button;
+    }));
+    ui.askRanks.replaceChildren(...game.askableRanks.map((rank) => {
+      const button = make('button', 'button button--small', rankPlural(rank));
+      button.type = 'button';
+      button.setAttribute('aria-label', `Ask ${target.name} for ${rankPlural(rank)}`);
+      button.addEventListener('click', () => socket.emit(Events.ASK, { seat: target.seat, rank }));
+      return button;
+    }));
+  }
+
+  function lastDrawText(game) {
+    if (game.type === GameType.GO_FISH) return game.lastFish ? `You drew ${CardView.label(game.lastFish)}.` : '';
+    const { lastDraw } = game;
     if (!lastDraw) return '';
     const card = CardView.label(lastDraw.card);
     if (lastDraw.you === 'took') return lastDraw.from ? `You took ${card} from ${lastDraw.from}.` : `You drew ${card}.`;
@@ -275,7 +343,10 @@
     renderArrangeControls(cards.length);
     ui.hand.replaceChildren(...cards.map((card) => CardView.face(card)));
     if (game.isPlaying && cards.length === 0) {
-      ui.hand.appendChild(make('p', 'hint', game.result ? 'No cards left.' : 'No cards — you can still draw from the pile.'));
+      const waiting = game.type === GameType.GO_FISH
+        ? "No cards — you'll draw one on your turn."
+        : 'No cards — you can still draw from the pile.';
+      ui.hand.appendChild(make('p', 'hint', game.result || game.drawPile.count === 0 ? 'No cards left.' : waiting));
     }
   }
 
@@ -342,6 +413,11 @@
         : 'Game over: everyone else left.';
       return;
     }
+    if (game.type === GameType.GO_FISH) {
+      ui.result.classList.toggle('result--lost', Boolean(game.isPlaying && !game.result.youWon && game.result.winners.length));
+      ui.result.textContent = goFishResultText(game.result);
+      return;
+    }
     ui.result.classList.toggle('result--lost', game.result.youLost);
     ui.result.textContent = game.result.loser
       ? (game.result.youLost ? 'You lost — you hold the Old Maid.' : `${game.result.loser} holds the Old Maid.`)
@@ -360,13 +436,15 @@
     ui.trick.hidden = !pusoy;
     if (pusoy) {
       ui.pick.hidden = true;
+      ui.ask.hidden = true;
       renderTrick(game);
       renderPusoyHand(game);
     } else {
       ui.playControls.hidden = true;
       renderPiles(game);
       renderPick(game);
-      ui.lastDraw.textContent = lastDrawText(game.lastDraw);
+      renderAsk(game);
+      ui.lastDraw.textContent = lastDrawText(game);
       renderHand(game);
     }
     renderResult(game);
@@ -480,7 +558,10 @@
 
   // ---- events --------------------------------------------------------------
 
-  ui.drawPile.addEventListener('click', () => socket.emit(Events.DRAW_FROM_PILE));
+  ui.drawPile.addEventListener('click', () => {
+    const goFish = lastState?.game?.type === GameType.GO_FISH;
+    socket.emit(goFish ? Events.GO_FISH : Events.DRAW_FROM_PILE);
+  });
   ui.arrangeOptions.forEach((button) => {
     button.addEventListener('click', () => arranger.setMode(button.dataset.arrange));
   });

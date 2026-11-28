@@ -5,6 +5,7 @@ const { NameAllocator } = require('./NameAllocator');
 const { KickVote } = require('./KickVote');
 const { OldMaidGame } = require('../game/OldMaidGame');
 const { PusoyDosGame } = require('../game/PusoyDosGame');
+const { GoFishGame } = require('../game/GoFishGame');
 const { GameSettings } = require('../game/GameSettings');
 const { GAMES, gameFor } = require('../game/games');
 const { ActionError } = require('../errors');
@@ -66,7 +67,7 @@ class Room {
     /** @type {string|null} */
     this.hostId = null;
     this.settings = new GameSettings();
-    /** @type {OldMaidGame|PusoyDosGame|null} */
+    /** @type {OldMaidGame|PusoyDosGame|GoFishGame|null} */
     this.game = null;
     this.hostKickVote = new KickVote(hostKickVotes);
     this.names = new NameAllocator();
@@ -236,6 +237,18 @@ class Room {
     this.changed();
   }
 
+  /** Go Fish. @param {string} id @param {unknown} request - untrusted `{ seat, rank }` */
+  ask(id, request) {
+    this.requireGame(GoFishGame).ask(id, request);
+    this.changed();
+  }
+
+  /** Go Fish. @param {string} id */
+  goFish(id) {
+    this.requireGame(GoFishGame).goFish(id);
+    this.changed();
+  }
+
   /** Plays for whoever ran out of time. */
   timeOutTurn() {
     const game = this.game;
@@ -353,7 +366,7 @@ class Room {
 
   /**
    * @private
-   * @template {typeof OldMaidGame | typeof PusoyDosGame} G
+   * @template {typeof OldMaidGame | typeof PusoyDosGame | typeof GoFishGame} G
    * @param {G} Game - the game the action belongs to
    * @returns {InstanceType<G>}
    */

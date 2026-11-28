@@ -37,3 +37,9 @@ describe('GameSettings', () => {
     assert.throws(() => new GameSettings().with('nope'), ActionError);
   });
 });
+
+describe('GameSettings game choice', () => {
+  it('can switch to Go Fish', () => {
+    assert.equal(new GameSettings().with({ game: 'go-fish' }).game, 'go-fish');
+  });
+});

@@ -2,6 +2,7 @@
 
 const { OldMaidGame } = require('./OldMaidGame');
 const { PusoyDosGame } = require('./PusoyDosGame');
+const { GoFishGame } = require('./GoFishGame');
 const { GameType } = require('./GameSettings');
 
 /**
@@ -11,9 +12,10 @@ const { GameType } = require('./GameSettings');
 const GAMES = Object.freeze({
   [GameType.OLD_MAID]: { title: 'Old Maid', Game: OldMaidGame },
   [GameType.PUSOY_DOS]: { title: 'Pusoy Dos', Game: PusoyDosGame },
+  [GameType.GO_FISH]: { title: 'Go Fish', Game: GoFishGame },
 });
 
-/** @param {string} type @returns {{ title: string, Game: typeof OldMaidGame | typeof PusoyDosGame }} */
+/** @param {string} type @returns {{ title: string, Game: typeof OldMaidGame | typeof PusoyDosGame | typeof GoFishGame }} */
 function gameFor(type) {
   return GAMES[type];
 }

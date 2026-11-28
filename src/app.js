@@ -32,6 +32,8 @@ const ACTIONS = Object.freeze({
   [Events.DRAW_FROM_PILE]: (room, id) => room.drawFromPile(id),
   [Events.PLAY_CARDS]: (room, id, cardIds) => room.playCards(id, cardIds),
   [Events.PASS]: (room, id) => room.pass(id),
+  [Events.ASK]: (room, id, request) => room.ask(id, request),
+  [Events.GO_FISH]: (room, id) => room.goFish(id),
 });
 
 /** Room.join refusals that end the connection, and the reason the client is shown. */

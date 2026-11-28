@@ -43,7 +43,7 @@
           <button id="draw-pile" type="button" class="pile__stack" aria-label="Draw pile"></button>
           <span id="draw-count" class="pile__label"></span>
         </div>
-        <div class="pile">
+        <div id="discard-wrap" class="pile">
           <div id="discard-pile" class="pile__stack pile__stack--discard" aria-label="Discard pile"></div>
           <span id="discard-count" class="pile__label"></span>
         </div>
@@ -52,6 +52,13 @@
       <div id="pick" class="pick" hidden>
         <p id="pick-label" class="pick__label"></p>
         <div id="pick-cards" class="pick__cards"></div>
+      </div>
+
+      <div id="ask" class="pick" hidden>
+        <p class="pick__label">Ask who?</p>
+        <div id="ask-targets" class="ask__options"></div>
+        <p class="pick__label">For which rank?</p>
+        <div id="ask-ranks" class="ask__options"></div>
       </div>
 
       <p id="last-draw" class="last-draw" aria-live="polite"></p>
@@ -138,6 +145,17 @@
         <li>On your turn, beat the cards on the table with a higher play of the <em>same number of cards</em>, or pass. You can still play on a later turn after passing.</li>
         <li>When everyone else passes, the last player to play clears the table and leads anything.</li>
         <li>The first player to get rid of all their cards wins.</li>
+      </ul>
+    </details>
+
+    <details class="panel rules" data-game="go-fish" hidden>
+      <summary>How to play Go Fish</summary>
+      <ul>
+        <li>2 to 10 players, full 52-card deck. Everyone gets 7 cards (5 with four or more players); the rest form the pile.</li>
+        <li>On your turn, ask any player for a rank you hold. If they have any, they hand them all over and you go again.</li>
+        <li>If not, <strong>go fish</strong>: draw from the pile. Draw the rank you asked for and you go again; otherwise the turn passes.</li>
+        <li>Four of a kind make a <strong>book</strong>, laid down automatically. Run out of cards and you draw one on your turn.</li>
+        <li>When all 13 books are made, whoever has the most wins.</li>
       </ul>
     </details>
   </main>

@@ -33,6 +33,8 @@ const Events = Object.freeze({
   DRAW_FROM_PILE: 'draw-from-pile',
   PLAY_CARDS: 'play-cards',
   PASS: 'pass',
+  ASK: 'ask', // Go Fish: ask a player for a rank
+  GO_FISH: 'go-fish', // Go Fish: draw when nobody can be asked
   ACTIVE: 'active', // heartbeat: someone is using this tab
 });
 

@@ -1,7 +1,7 @@
 {
   "name": "cards",
   "version": "0.1.0",
-  "description": "Multiplayer card games (Old Maid, Pusoy Dos) with a standard 52-card deck over Socket.IO",
+  "description": "Multiplayer card games (Old Maid, Pusoy Dos, Go Fish) with a standard 52-card deck over Socket.IO",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

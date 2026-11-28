@@ -10,6 +10,7 @@ const MAX_CARDS_PER_PLAYER = 51;
 const GameType = Object.freeze({
   OLD_MAID: 'old-maid',
   PUSOY_DOS: 'pusoy-dos',
+  GO_FISH: 'go-fish',
 });
 const GAME_TYPES = Object.freeze(Object.values(GameType));
 
