@@ -300,4 +300,45 @@ describe('Room', () => {
       assert.equal(room.phase, Phase.LOBBY);
     });
   });
+
+  describe('choosing a game', () => {
+    beforeEach(() => joinAll('a', 'b', 'c', 'd', 'e'));
+
+    it('offers Old Maid and Pusoy Dos, with Old Maid by default', () => {
+      const state = room.stateFor('b');
+      assert.equal(state.settings.game, 'old-maid');
+      assert.deepEqual(state.games.map((g) => g.title), ['Old Maid', 'Pusoy Dos']);
+      assert.throws(() => room.updateSettings('a', { game: 'poker' }), { code: 'invalid-settings' });
+    });
+
+    it('starts Pusoy Dos with at most four players; the rest watch', () => {
+      room.updateSettings('a', { game: 'pusoy-dos' });
+      assert.deepEqual(room.stateFor('a').limits, { minPlayers: 2, maxPlayers: 4 });
+      room.startGame('a');
+      assert.deepEqual(room.game.playerIds, ['a', 'b', 'c', 'd']);
+      assert.equal(room.stateFor('e').game.type, 'pusoy-dos');
+      assert.equal(room.stateFor('e').game.isPlaying, false);
+      assert.match(room.activity.at(-1), /started a game of Pusoy Dos/);
+    });
+
+    it('routes Pusoy Dos moves and rejects the other game\'s moves', () => {
+      room.updateSettings('a', { game: 'pusoy-dos' });
+      room.startGame('a');
+      const { game } = room;
+      const leader = game.currentPlayerId;
+      assert.throws(() => room.drawFromPile(leader), { code: 'wrong-game' });
+      room.playCards(leader, [game.openingCard.id]);
+      assert.equal(game.trick.playerId, leader);
+      room.pass(game.currentPlayerId);
+      assert.equal(game.turnCount, 2);
+    });
+
+    it('plays a Pusoy Dos game to the end on timeouts', () => {
+      room.updateSettings('a', { game: 'pusoy-dos' });
+      room.startGame('a');
+      while (!room.game.isOver) mock.timers.tick(room.turnTimeoutMs);
+      assert.ok(room.stateFor('a').game.result.winner);
+      assert.match(room.activity.join('\n'), /a move was made for them/);
+    });
+  });
 });

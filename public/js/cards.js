@@ -8,7 +8,7 @@ window.CardView = (() => {
   const RANK_NAMES = { A: 'ace', J: 'jack', Q: 'queen', K: 'king' };
   const RED_SUITS = new Set(['diamonds', 'hearts']);
   // U+FE0E asks for the text form, so phones don't swap in emoji hearts.
-  const TEXT_STYLE = '︎';
+  const TEXT_STYLE = '\uFE0E';
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
   // Suit and crown shapes on a 24×24 grid.
@@ -54,16 +54,10 @@ window.CardView = (() => {
     return `${RANK_NAMES[card.rank] ?? card.rank} of ${card.suit}`;
   }
 
-  /**
-   * A face-up card.
-   * @param {{ rank: string, suit: string }} card
-   * @param {string} [extraClass]
-   */
-  function face(card, extraClass = '') {
-    const el = document.createElement('div');
+  /** Fills `el` with a card face. */
+  function paintFace(el, card, extraClass) {
     el.className = `card ${RED_SUITS.has(card.suit) ? 'card--red' : 'card--black'} ${extraClass}`.trim();
-    el.setAttribute('role', 'img');
-    el.setAttribute('aria-label', spokenName(card));
+    if (card.id) el.dataset.cardId = card.id;
     for (const corner of ['top', 'bottom']) {
       const span = document.createElement('span');
       span.className = `card__corner card__corner--${corner}`;
@@ -77,6 +71,36 @@ window.CardView = (() => {
     if (card.rank === 'Q') pip.appendChild(icon('crown', 'card__crown'));
     pip.appendChild(icon(card.suit, 'card__suit'));
     el.appendChild(pip);
+    return el;
+  }
+
+  /**
+   * A face-up card.
+   * @param {{ rank: string, suit: string }} card
+   * @param {string} [extraClass]
+   */
+  function face(card, extraClass = '') {
+    const el = paintFace(document.createElement('div'), card, extraClass);
+    el.setAttribute('role', 'img');
+    el.setAttribute('aria-label', spokenName(card));
+    return el;
+  }
+
+  /**
+   * A face-up card the player can select or deselect (a toggle button).
+   * @param {{ rank: string, suit: string }} card
+   * @param {object} options
+   * @param {boolean} options.selected
+   * @param {boolean} [options.disabled]
+   * @param {() => void} options.onClick
+   */
+  function selectable(card, { selected, disabled = false, onClick }) {
+    const el = paintFace(document.createElement('button'), card, `card--selectable${selected ? ' card--selected' : ''}`);
+    el.type = 'button';
+    el.disabled = disabled;
+    el.setAttribute('aria-pressed', String(selected));
+    el.setAttribute('aria-label', spokenName(card));
+    el.addEventListener('click', onClick);
     return el;
   }
 
@@ -101,5 +125,5 @@ window.CardView = (() => {
     return el;
   }
 
-  return { face, back, icon, label, spokenName };
+  return { face, selectable, back, icon, label, spokenName };
 })();

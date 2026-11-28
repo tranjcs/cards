@@ -13,7 +13,7 @@ const { clientAddress, isSameOrigin, securityHeaders } = require('./net/requests
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const DEFAULT_IDLE_TIMEOUT_MS = 20 * 60 * 1000;
-// Client messages are tiny (a number or a small object); refuse anything bigger.
+// Client messages are tiny (a number, a few card ids or a small object); refuse anything bigger.
 const MAX_MESSAGE_BYTES = 4 * 1024;
 const RATE_LIMIT = Object.freeze({ capacity: 20, perSecond: 5 });
 
@@ -30,6 +30,8 @@ const ACTIONS = Object.freeze({
   [Events.VOTE_KICK_HOST]: (room, id) => room.voteKickHost(id),
   [Events.DRAW_FROM_PLAYER]: (room, id, index) => room.drawFromPlayer(id, index),
   [Events.DRAW_FROM_PILE]: (room, id) => room.drawFromPile(id),
+  [Events.PLAY_CARDS]: (room, id, cardIds) => room.playCards(id, cardIds),
+  [Events.PASS]: (room, id) => room.pass(id),
 });
 
 /** Room.join refusals that end the connection, and the reason the client is shown. */

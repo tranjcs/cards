@@ -31,6 +31,8 @@ const Events = Object.freeze({
   VOTE_KICK_HOST: 'vote-kick-host',
   DRAW_FROM_PLAYER: 'draw-from-player',
   DRAW_FROM_PILE: 'draw-from-pile',
+  PLAY_CARDS: 'play-cards',
+  PASS: 'pass',
   ACTIVE: 'active', // heartbeat: someone is using this tab
 });
 
