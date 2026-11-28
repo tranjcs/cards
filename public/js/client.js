@@ -63,6 +63,15 @@
     titleText: $('title-text'),
     status: $('status'),
     table: $('table'),
+    hud: $('hud'),
+    center: $('center'),
+    setup: $('setup'),
+    turnArrow: $('turn-arrow'),
+    endGame: $('end-game'),
+    menuToggle: $('menu-toggle'),
+    menuClose: $('menu-close'),
+    drawer: $('drawer'),
+    drawerScrim: $('drawer-scrim'),
     timer: $('timer'),
     timerFill: $('timer-fill'),
     seats: $('seats'),
@@ -106,6 +115,7 @@
     end: $('end'),
     guestControls: $('guest-controls'),
     waitingHost: $('waiting-host'),
+    voteHint: $('vote-hint'),
     voteKick: $('vote-kick'),
     activity: $('activity'),
     toast: $('toast'),
@@ -155,8 +165,7 @@
   function renderTimer(game) {
     clearInterval(timerInterval);
     const running = game && !game.result && game.turnRemainingMs !== null;
-    ui.timer.hidden = !running;
-    ui.timerFill.parentElement.hidden = !running;
+    ui.hud.hidden = !running;
     if (!running) return;
     const deadline = Date.now() + game.turnRemainingMs;
     const tick = () => {
@@ -231,6 +240,7 @@
   // ---- table -------------------------------------------------------------
 
   function seatBadge(seat) {
+    if (seat.isHost) return 'host';
     if (seat.isLoser) return 'old maid';
     if (seat.isWinner) return 'winner';
     if (seat.isSafe) return 'safe';
@@ -241,14 +251,22 @@
     return '';
   }
 
-  function renderSeats(game) {
-    // Seat everyone around the oval, starting with you at the bottom (or the
-    // first player when watching) and going clockwise.
-    const count = game.seats.length;
-    const first = Math.max(0, game.seats.findIndex((seat) => seat.isYou));
-    ui.seats.replaceChildren(...game.seats.map((seat, index) => {
-      const position = (index - first + count) % count;
-      const angle = 90 + (position * 360) / count;
+  /** Where seat `index` of `seats` sits: degrees clockwise from the right, with you at the bottom (90°). */
+  function seatAngle(seats, index) {
+    const count = seats.length;
+    const first = Math.max(0, seats.findIndex((seat) => seat.isYou));
+    const position = (index - first + count) % count;
+    return 90 + (position * 360) / count;
+  }
+
+  /**
+   * Seats everyone around the oval, starting with you at the bottom (or the
+   * first player when watching) and going clockwise. In the lobby the seats are
+   * the room's members, with no cards.
+   */
+  function renderSeats(seats) {
+    ui.seats.replaceChildren(...seats.map((seat, index) => {
+      const angle = seatAngle(seats, index);
       const radians = (angle * Math.PI) / 180;
       const li = make('li', 'seat');
       li.style.setProperty('--cx', Math.cos(radians).toFixed(4));
@@ -266,7 +284,7 @@
 
       const cards = seat.hand
         ? seat.hand.map((card) => CardView.face(card, 'card--mini'))
-        : Array.from({ length: Math.min(seat.cardCount, 7) }, () => CardView.back({ extraClass: 'card--mini' }));
+        : Array.from({ length: Math.min(seat.cardCount ?? 0, 7) }, () => CardView.back({ extraClass: 'card--mini' }));
       const cardFan = make('div', 'seat__fan');
       cardFan.append(...fan(cards));
 
@@ -276,10 +294,10 @@
       if (badge) ring.appendChild(make('span', 'seat__badge', badge));
 
       const chip = make('div', 'seat__chip');
-      chip.append(
-        make('span', 'seat__name', seat.isYou ? 'You' : seat.name),
-        make('span', 'seat__count', `${seat.cardCount} ${seat.cardCount === 1 ? 'card' : 'cards'}`),
-      );
+      chip.appendChild(make('span', 'seat__name', seat.isYou ? 'You' : seat.name));
+      if (seat.cardCount !== undefined) {
+        chip.appendChild(make('span', 'seat__count', `${seat.cardCount} ${seat.cardCount === 1 ? 'card' : 'cards'}`));
+      }
       if (seat.books) {
         const books = seat.books.length ? `: ${seat.books.join(' ')}` : '';
         chip.appendChild(make('span', 'seat__books', `${seat.books.length} ${seat.books.length === 1 ? 'book' : 'books'}${books}`));
@@ -287,6 +305,21 @@
       li.append(cardFan, ring, chip);
       return li;
     }));
+  }
+
+  /** The arrow's current angle; it only ever turns the short way round. */
+  let arrowAngle = null;
+
+  /** Points the bouncing arrow in the middle of the table at whoever's turn it is. */
+  function renderTurnArrow(seats, show) {
+    const turn = show ? seats.findIndex((seat) => seat.isTurn) : -1;
+    ui.turnArrow.hidden = turn < 0;
+    if (turn < 0) return;
+    const target = seatAngle(seats, turn);
+    if (arrowAngle === null) arrowAngle = target;
+    else arrowAngle += ((((target - arrowAngle) % 360) + 540) % 360) - 180;
+    ui.turnArrow.style.setProperty('--a', `${arrowAngle}deg`);
+    ui.turnArrow.classList.toggle('turn-arrow--you', Boolean(seats[turn].isYou));
   }
 
   function renderPiles(game) {
@@ -472,15 +505,25 @@
 
   function renderTable(state) {
     const { game } = state;
-    ui.table.hidden = !game;
+    // The middle of the felt holds the game while it's on, and the settings before and after.
+    ui.center.hidden = state.phase !== Phase.PLAYING;
+    ui.setup.hidden = state.phase === Phase.PLAYING;
+    ui.feltLogo.textContent = titleOf(state);
     if (!game) {
+      const seats = state.members.map((member) => ({ name: member.name, isYou: member.isYou, isHost: member.isHost }));
+      renderSeats(seats);
+      renderTurnArrow(seats, false);
       renderTimer(null);
+      ui.hand.closest('.hand-wrap').hidden = true;
+      ui.ask.hidden = true;
+      ui.result.hidden = true;
+      renderList(ui.log, []);
       return;
     }
     const pusoy = game.type === GameType.PUSOY_DOS;
-    renderSeats(game);
+    renderSeats(game.seats);
+    renderTurnArrow(game.seats, !game.result);
     renderTimer(game);
-    ui.feltLogo.textContent = titleOf(state);
     ui.piles.hidden = pusoy;
     ui.lastDraw.hidden = pusoy;
     ui.trick.hidden = !pusoy;
@@ -528,9 +571,10 @@
 
   function renderHostControls(state) {
     const { you, phase, settings } = state;
-    ui.hostControls.hidden = !you.isHost;
-    if (!you.isHost) return;
     const playing = phase === Phase.PLAYING;
+    ui.hostControls.hidden = !you.isHost;
+    ui.endGame.hidden = !you.isHost || !playing;
+    if (!you.isHost) return;
 
     ui.gameType.replaceChildren(...state.games.map((game) => {
       const option = make('option', '', `${game.title} (${game.minPlayers}–${game.maxPlayers} players)`);
@@ -559,15 +603,18 @@
     ui.start.hidden = playing;
     ui.start.disabled = !state.canStart;
     ui.start.textContent = phase === Phase.FINISHED ? 'Play again' : 'Start game';
-    ui.end.hidden = !state.game;
-    ui.end.textContent = playing ? 'End game' : 'Back to lobby';
+    ui.end.hidden = !state.game || playing;
   }
 
   function renderGuestControls(state) {
     const { you, hostVote } = state;
     ui.guestControls.hidden = you.isHost;
+    ui.waitingHost.hidden = you.isHost;
     if (you.isHost) return;
-    ui.waitingHost.textContent = `${state.host} is the host. At least ${hostVote.needed} votes are needed to kick them.`;
+    ui.waitingHost.textContent = state.members.length < state.limits.minPlayers
+      ? 'Waiting for more players to join…'
+      : `Waiting for ${state.host} to start the game…`;
+    ui.voteHint.textContent = `${state.host} is the host. At least ${hostVote.needed} votes are needed to kick them.`;
     ui.voteKick.textContent = `${hostVote.youVoted ? 'Withdraw vote' : 'Vote to kick host'} (${hostVote.votes}/${hostVote.needed})`;
     ui.voteKick.setAttribute('aria-pressed', String(hostVote.youVoted));
   }
@@ -633,9 +680,24 @@
     event.preventDefault();
     socket.emit(Events.START_GAME);
   });
-  ui.end.addEventListener('click', () => {
-    const running = document.body.dataset.phase === Phase.PLAYING;
-    if (!running || window.confirm('End the game for everyone?')) socket.emit(Events.END_GAME);
+  ui.end.addEventListener('click', () => socket.emit(Events.END_GAME));
+  ui.endGame.addEventListener('click', () => {
+    if (window.confirm('End the game for everyone?')) socket.emit(Events.END_GAME);
+  });
+
+  // The drawer holds the room (players, kicks, votes), the rules and the logs.
+  function setDrawer(open) {
+    ui.drawer.hidden = !open;
+    ui.drawerScrim.hidden = !open;
+    ui.menuToggle.setAttribute('aria-expanded', String(open));
+    if (open) ui.menuClose.focus();
+    else if (ui.drawer.contains(document.activeElement)) ui.menuToggle.focus();
+  }
+  ui.menuToggle.addEventListener('click', () => setDrawer(ui.drawer.hidden));
+  ui.menuClose.addEventListener('click', () => setDrawer(false));
+  ui.drawerScrim.addEventListener('click', () => setDrawer(false));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !ui.drawer.hidden) setDrawer(false);
   });
   ui.voteKick.addEventListener('click', () => socket.emit(Events.VOTE_KICK_HOST));
   ui.rejoin.addEventListener('click', () => {

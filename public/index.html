@@ -20,18 +20,21 @@
         </div>
         <h1 id="title-text" class="title">Cards</h1>
       </div>
+      <p id="status" class="status" role="status" aria-live="polite">Connecting…</p>
       <div class="masthead__side">
         <p id="me" class="me"></p>
+        <button id="end-game" type="button" class="button button--small button--danger" hidden>End game</button>
         <button id="theme-toggle" type="button" class="icon-button" aria-label="Color theme: system" title="Color theme: system">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z"/></svg>
+        </button>
+        <button id="menu-toggle" type="button" class="icon-button" aria-label="Room, rules and log" aria-controls="drawer" aria-expanded="false" title="Room, rules and log">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h16v2H4zm0 4.5h16v2H4zm0 4.5h16v2H4z"/></svg>
         </button>
       </div>
     </header>
 
-    <p id="status" class="status" role="status" aria-live="polite">Connecting…</p>
-
-    <section id="table" class="panel table" aria-label="Card table" hidden>
-      <div class="hud">
+    <section id="table" class="table" aria-label="Card table">
+      <div id="hud" class="hud">
         <p id="timer" class="timer" role="timer"></p>
         <div class="turn-timer" aria-hidden="true">
           <div id="timer-fill" class="turn-timer__fill"></div>
@@ -42,7 +45,10 @@
         <div class="rail">
           <div class="felt">
             <span id="felt-logo" class="felt__logo" aria-hidden="true"></span>
-            <div class="center">
+            <div id="turn-arrow" class="turn-arrow" aria-hidden="true" hidden>
+              <span class="turn-arrow__tip"></span>
+            </div>
+            <div id="center" class="center">
               <div id="pick" class="pick" hidden>
                 <p id="pick-label" class="pick__label"></p>
                 <div id="pick-cards" class="fan fan--pick"></div>
@@ -66,6 +72,25 @@
 
               <p id="last-draw" class="last-draw" aria-live="polite"></p>
             </div>
+
+            <div id="setup" class="setup" hidden>
+              <form id="host-controls" class="host-controls" hidden>
+                <label class="field">
+                  <span class="field__label">Game</span>
+                  <select id="game-type" class="field__input"></select>
+                </label>
+                <label id="cards-per-player-field" class="field">
+                  <span class="field__label">Cards per player</span>
+                  <select id="cards-per-player" class="field__input"></select>
+                </label>
+                <p id="settings-hint" class="hint"></p>
+                <div class="actions">
+                  <button id="start" type="submit" class="button button--go">Start game</button>
+                  <button id="end" type="button" class="button button--small" hidden>Back to lobby</button>
+                </div>
+              </form>
+              <p id="waiting-host" class="setup__waiting" hidden></p>
+            </div>
           </div>
         </div>
         <ol id="seats" class="seats" aria-label="Players, clockwise"></ol>
@@ -84,7 +109,7 @@
 
       <div id="result" class="result" hidden></div>
 
-      <div class="hand-wrap">
+      <div class="hand-wrap" hidden>
         <div class="hand-head">
           <h2 class="section-title">Your hand <span id="hand-count" class="count"></span></h2>
           <div class="arrange" role="group" aria-label="Arrange your hand">
@@ -102,42 +127,24 @@
           <button id="play" type="button" class="button button--go">Play</button>
         </div>
       </div>
-
-      <details class="log">
-        <summary>Game log</summary>
-        <ul id="log" class="log__list"></ul>
-      </details>
     </section>
+  </main>
 
-    <section class="panel lobby" aria-labelledby="players-heading">
-      <h2 id="players-heading" class="section-title">Players <span id="player-count" class="count"></span></h2>
-      <ul id="players" class="players"></ul>
+  <div id="drawer-scrim" class="drawer-scrim" hidden></div>
+  <aside id="drawer" class="drawer" aria-label="Room, rules and log" hidden>
+    <div class="drawer__head">
+      <h2 class="section-title">Room <span id="player-count" class="count"></span></h2>
+      <button id="menu-close" type="button" class="icon-button" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.4 5 12 10.6 17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4z"/></svg>
+      </button>
+    </div>
+    <ul id="players" class="players"></ul>
+    <div id="guest-controls" class="guest-controls" hidden>
+      <p id="vote-hint" class="hint"></p>
+      <button id="vote-kick" type="button" class="button button--ghost button--small"></button>
+    </div>
 
-      <form id="host-controls" class="host-controls" hidden>
-        <label class="field">
-          <span class="field__label">Game</span>
-          <select id="game-type" class="field__input"></select>
-        </label>
-        <label id="cards-per-player-field" class="field">
-          <span class="field__label">Cards per player</span>
-          <select id="cards-per-player" class="field__input"></select>
-        </label>
-        <p id="settings-hint" class="hint"></p>
-        <div class="actions">
-          <button id="start" type="submit" class="button button--primary">Start game</button>
-          <button id="end" type="button" class="button button--danger" hidden>End game</button>
-        </div>
-      </form>
-
-      <div id="guest-controls" class="guest-controls" hidden>
-        <p id="waiting-host" class="hint"></p>
-        <button id="vote-kick" type="button" class="button button--ghost"></button>
-      </div>
-
-      <ul id="activity" class="activity" aria-label="Room activity"></ul>
-    </section>
-
-    <details class="panel rules" data-game="old-maid">
+    <details class="rules" data-game="old-maid">
       <summary>How to play Old Maid</summary>
       <ul>
         <li>The Q♣ is removed, so one queen can never be paired: that's the <strong>Old Maid</strong>.</li>
@@ -147,7 +154,7 @@
       </ul>
     </details>
 
-    <details class="panel rules" data-game="pusoy-dos" hidden>
+    <details class="rules" data-game="pusoy-dos" hidden>
       <summary>How to play Pusoy Dos</summary>
       <ul>
         <li>2 to 4 players. Each gets 13 cards (17 with three players); any others are set aside unseen.</li>
@@ -162,7 +169,7 @@
       </ul>
     </details>
 
-    <details class="panel rules" data-game="go-fish" hidden>
+    <details class="rules" data-game="go-fish" hidden>
       <summary>How to play Go Fish</summary>
       <ul>
         <li>2 to 10 players, full 52-card deck. Everyone gets 7 cards (5 with four or more players); the rest form the pile.</li>
@@ -172,7 +179,17 @@
         <li>When all 13 books are made, whoever has the most wins.</li>
       </ul>
     </details>
-  </main>
+
+    <details class="log" open>
+      <summary>Game log</summary>
+      <ul id="log" class="log__list"></ul>
+    </details>
+
+    <details class="log" open>
+      <summary>Room activity</summary>
+      <ul id="activity" class="log__list"></ul>
+    </details>
+  </aside>
 
   <div id="toast" class="toast" role="alert" hidden></div>
 
