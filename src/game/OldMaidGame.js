@@ -186,6 +186,7 @@ class OldMaidGame extends CardGame {
     const loserId = this.result?.loserId ?? null;
 
     return {
+      type: 'old-maid',
       seats: this.playerIds.map((id) => ({
         name: nameOf(id),
         cardCount: this.handOf(id).size,

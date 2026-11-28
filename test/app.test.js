@@ -51,7 +51,7 @@ describe('app (Socket.IO integration)', () => {
   it('serves the client page', async () => {
     const res = await fetch(url);
     assert.equal(res.status, 200);
-    assert.match(await res.text(), /<title>Old Maid<\/title>/);
+    assert.match(await res.text(), /<title>Cards<\/title>/);
   });
 
   it('runs the lobby, kicks, votes and a game end to end', async () => {
@@ -109,6 +109,111 @@ describe('app (Socket.IO integration)', () => {
     assert.ok((await next(socket, Events.ERROR)).message);
     socket.emit(Events.DRAW_FROM_PLAYER, { evil: true });
     assert.ok((await next(socket, Events.ERROR)).message);
+  });
+});
+
+describe('app (Pusoy Dos)', () => {
+  let server;
+  let io;
+  let room;
+  let url;
+  const sockets = [];
+  const join = async () => {
+    const socket = connect(url, { forceNew: true, transports: ['websocket'] });
+    sockets.push(socket);
+    socket.state = await next(socket, Events.STATE);
+    socket.on(Events.STATE, (state) => { socket.state = state; });
+    return socket;
+  };
+
+  before(async () => {
+    ({ server, io, room } = createApp({ rng: seededRng(4) }));
+    await new Promise((resolve) => server.listen(0, resolve));
+    url = `http://localhost:${server.address().port}`;
+  });
+
+  after(async () => {
+    sockets.forEach((s) => s.disconnect());
+    room.dispose();
+    await new Promise((resolve) => io.close(resolve));
+  });
+
+  it('plays Pusoy Dos over the socket', async () => {
+    const host = await join();
+    const guest = await join();
+    const hostSocket = host;
+    hostSocket.emit(Events.UPDATE_SETTINGS, { game: 'pusoy-dos' });
+    await next(hostSocket, Events.STATE, (s) => s.settings.game === 'pusoy-dos');
+    hostSocket.emit(Events.START_GAME);
+    await Promise.all([host, guest].map((s) => (s.state.game?.type === 'pusoy-dos' && s.state.phase === Phase.PLAYING
+      ? null : next(s, Events.STATE, (st) => st.game?.type === 'pusoy-dos'))));
+    const leader = [host, guest].find((s) => s.state.game.isYourTurn);
+    const other = [host, guest].find((s) => s !== leader);
+    const opening = leader.state.game.mustInclude;
+    assert.ok(opening);
+
+    other.emit(Events.PLAY_CARDS, [opening.id]);
+    assert.equal((await next(other, Events.ERROR)).code, 'not-your-turn');
+    leader.emit(Events.PLAY_CARDS, [opening.id]);
+    const seen = await next(other, Events.STATE, (s) => s.game.table !== null);
+    assert.deepEqual(seen.game.table.cards, [opening]);
+    assert.equal(seen.game.canPass, true);
+    other.emit(Events.PASS);
+    await next(leader, Events.STATE, (s) => s.game.isYourTurn && s.game.table === null);
+  });
+});
+
+describe('app (Go Fish over Socket.IO)', () => {
+  let server;
+  let io;
+  let room;
+  let url;
+  const sockets = [];
+
+  before(async () => {
+    ({ server, io, room } = createApp({ rng: seededRng(5) }));
+    await new Promise((resolve) => server.listen(0, resolve));
+    url = `http://localhost:${server.address().port}`;
+  });
+
+  after(async () => {
+    sockets.forEach((s) => s.disconnect());
+    room.dispose();
+    await new Promise((resolve) => io.close(resolve));
+  });
+
+  it('lets the host pick Go Fish and players ask each other', async () => {
+    const players = [];
+    for (let i = 0; i < 2; i += 1) {
+      const socket = connect(url, { forceNew: true, transports: ['websocket'] });
+      sockets.push(socket);
+      socket.on(Events.STATE, (state) => { socket.state = state; });
+      await next(socket, Events.STATE);
+      players.push(socket);
+    }
+    const [host, guest] = players;
+    host.emit(Events.UPDATE_SETTINGS, { game: 'go-fish' });
+    await next(guest, Events.STATE, (s) => s.settings.game === 'go-fish');
+
+    const started = players.map((s) => next(s, Events.STATE, (st) => st.phase === Phase.PLAYING));
+    host.emit(Events.START_GAME);
+    await Promise.all(started);
+    assert.equal(guest.state.game.type, 'go-fish');
+    assert.equal(guest.state.game.drawPile.count, 52 - 14);
+
+    const current = players.find((s) => s.state.game.isYourTurn);
+    const other = players.find((s) => s !== current);
+    // Wrong game's move, then a malformed ask: errors, no crash.
+    current.emit(Events.DRAW_FROM_PILE);
+    assert.equal((await next(current, Events.ERROR)).code, 'wrong-game');
+    current.emit(Events.ASK, { seat: 'x' });
+    assert.equal((await next(current, Events.ERROR)).code, 'invalid-target');
+
+    const { game } = current.state;
+    const target = game.seats.find((seat) => seat.isTarget);
+    const asked = next(other, Events.STATE, (s) => s.game.log.some((line) => line.includes(' asked ')));
+    current.emit(Events.ASK, { seat: target.seat, rank: game.askableRanks[0] });
+    await asked;
   });
 });
 

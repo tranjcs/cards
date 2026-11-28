@@ -3,12 +3,16 @@
 const { Card } = require('./Card');
 const { randomInt } = require('../random');
 
-/** The cards one player holds. Kept sorted by rank so the owner sees an orderly hand. */
+/** The cards one player holds. Kept sorted so the owner sees an orderly hand. */
 class Hand {
-  /** @param {Iterable<Card>} [cards] */
-  constructor(cards = []) {
+  /**
+   * @param {Iterable<Card>} [cards]
+   * @param {(a: Card, b: Card) => number} [compare] - sort order; rank (ace low) by default
+   */
+  constructor(cards = [], compare = Card.compare) {
     /** @type {Card[]} */
     this.cards = [];
+    this.compare = compare;
     this.add(...cards);
   }
 
@@ -26,13 +30,29 @@ class Hand {
       if (!(card instanceof Card)) throw new TypeError('Only cards can go in a hand');
     }
     this.cards.push(...cards);
-    this.cards.sort(Card.compare);
+    this.cards.sort(this.compare);
   }
 
   /** Removes and returns a random card, or null if empty. */
   takeRandom(rng) {
     if (this.isEmpty) return null;
     return this.cards.splice(randomInt(this.cards.length, rng), 1)[0];
+  }
+
+  /**
+   * Finds cards by id without removing them.
+   * @param {string[]} ids
+   * @returns {Card[]|null} the cards, or null if any id isn't in the hand
+   */
+  findAll(ids) {
+    const found = ids.map((id) => this.cards.find((card) => card.id === id));
+    return found.every(Boolean) ? found : null;
+  }
+
+  /** @param {Card[]} cards - removed if present */
+  removeAll(cards) {
+    const gone = new Set(cards);
+    this.cards = this.cards.filter((card) => !gone.has(card));
   }
 
   /** Removes and returns every card. */
@@ -58,6 +78,40 @@ class Hand {
     const paired = new Set(pairs.flat());
     this.cards = this.cards.filter((card) => !paired.has(card));
     return pairs;
+  }
+
+  /** @returns {string[]} the distinct ranks held, low to high */
+  get ranks() {
+    return [...new Set(this.cards.map((card) => card.rank))];
+  }
+
+  /** @param {string} rank */
+  hasRank(rank) {
+    return this.cards.some((card) => card.rank === rank);
+  }
+
+  /**
+   * Removes and returns every card of a rank.
+   * @param {string} rank
+   * @returns {Card[]}
+   */
+  takeRank(rank) {
+    const taken = this.cards.filter((card) => card.rank === rank);
+    this.cards = this.cards.filter((card) => card.rank !== rank);
+    return taken;
+  }
+
+  /**
+   * Removes every complete set of `size` cards of one rank (a "book" in Go Fish).
+   * @param {number} [size]
+   * @returns {Card[][]} the sets removed
+   */
+  removeSets(size = 4) {
+    const sets = [];
+    for (const rank of this.ranks) {
+      if (this.cards.filter((card) => card.rank === rank).length >= size) sets.push(this.takeRank(rank));
+    }
+    return sets;
   }
 
   toJSON() {

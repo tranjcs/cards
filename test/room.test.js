@@ -143,6 +143,44 @@ describe('Room', () => {
     });
   });
 
+  describe('Go Fish', () => {
+    beforeEach(() => {
+      joinAll('a', 'b', 'c');
+      room.updateSettings('a', { game: 'go-fish' });
+    });
+
+    it('starts Go Fish when the host picks it', () => {
+      assert.equal(room.stateFor('b').settings.game, 'go-fish');
+      room.startGame('a');
+      assert.equal(room.stateFor('b').game.type, 'go-fish');
+      assert.equal(room.game.drawPile.size, 52 - 21);
+    });
+
+    it("plays asks through the room and refuses Old Maid moves", () => {
+      room.startGame('a');
+      const id = room.game.currentPlayerId;
+      assert.throws(() => room.drawFromPile(id), { code: 'wrong-game' });
+      const target = room.game.targetsFor(id)[0];
+      const rank = room.game.handOf(id).ranks[0];
+      const before = room.game.turnCount;
+      room.ask(id, { seat: room.game.playerIds.indexOf(target), rank });
+      assert.equal(room.game.turnCount, before + 1);
+    });
+
+    it('times out turns and finishes', () => {
+      room.startGame('a');
+      while (!room.game.isOver) mock.timers.tick(room.turnTimeoutMs);
+      assert.equal(room.phase, Phase.FINISHED);
+      assert.ok(room.stateFor('a').game.result.winners.length >= 1);
+    });
+
+    it("refuses Go Fish moves in Old Maid", () => {
+      room.updateSettings('a', { game: 'old-maid' });
+      room.startGame('a');
+      assert.throws(() => room.goFish(room.game.currentPlayerId), { code: 'wrong-game' });
+    });
+  });
+
   describe('limits', () => {
     it('refuses to join beyond capacity', () => {
       create({ maxMembers: 2 });
@@ -298,6 +336,47 @@ describe('Room', () => {
     it('returns to the lobby when everyone leaves', () => {
       ['a', 'b', 'c'].forEach((id) => room.leave(id));
       assert.equal(room.phase, Phase.LOBBY);
+    });
+  });
+
+  describe('choosing a game', () => {
+    beforeEach(() => joinAll('a', 'b', 'c', 'd', 'e'));
+
+    it('offers Old Maid, Pusoy Dos and Go Fish, with Old Maid by default', () => {
+      const state = room.stateFor('b');
+      assert.equal(state.settings.game, 'old-maid');
+      assert.deepEqual(state.games.map((g) => g.title), ['Old Maid', 'Pusoy Dos', 'Go Fish']);
+      assert.throws(() => room.updateSettings('a', { game: 'poker' }), { code: 'invalid-settings' });
+    });
+
+    it('starts Pusoy Dos with at most four players; the rest watch', () => {
+      room.updateSettings('a', { game: 'pusoy-dos' });
+      assert.deepEqual(room.stateFor('a').limits, { minPlayers: 2, maxPlayers: 4 });
+      room.startGame('a');
+      assert.deepEqual(room.game.playerIds, ['a', 'b', 'c', 'd']);
+      assert.equal(room.stateFor('e').game.type, 'pusoy-dos');
+      assert.equal(room.stateFor('e').game.isPlaying, false);
+      assert.match(room.activity.at(-1), /started a game of Pusoy Dos/);
+    });
+
+    it('routes Pusoy Dos moves and rejects the other game\'s moves', () => {
+      room.updateSettings('a', { game: 'pusoy-dos' });
+      room.startGame('a');
+      const { game } = room;
+      const leader = game.currentPlayerId;
+      assert.throws(() => room.drawFromPile(leader), { code: 'wrong-game' });
+      room.playCards(leader, [game.openingCard.id]);
+      assert.equal(game.trick.playerId, leader);
+      room.pass(game.currentPlayerId);
+      assert.equal(game.turnCount, 2);
+    });
+
+    it('plays a Pusoy Dos game to the end on timeouts', () => {
+      room.updateSettings('a', { game: 'pusoy-dos' });
+      room.startGame('a');
+      while (!room.game.isOver) mock.timers.tick(room.turnTimeoutMs);
+      assert.ok(room.stateFor('a').game.result.winner);
+      assert.match(room.activity.join('\n'), /a move was made for them/);
     });
   });
 });

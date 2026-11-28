@@ -1,4 +1,4 @@
-/* global io, CardView */
+/* global io, CardView, HandArranger */
 'use strict';
 
 (() => {
@@ -15,8 +15,21 @@
     VOTE_KICK_HOST: 'vote-kick-host',
     DRAW_FROM_PLAYER: 'draw-from-player',
     DRAW_FROM_PILE: 'draw-from-pile',
+    PLAY_CARDS: 'play-cards',
+    PASS: 'pass',
+    ASK: 'ask',
+    GO_FISH: 'go-fish',
     ACTIVE: 'active',
   };
+  const GameType = { OLD_MAID: 'old-maid', PUSOY_DOS: 'pusoy-dos', GO_FISH: 'go-fish' };
+  const SETTINGS_HINTS = {
+    [GameType.OLD_MAID]: "Old Maid uses the 52-card deck minus the Q♣. Cards that aren't dealt form the draw pile.",
+    [GameType.PUSOY_DOS]: 'Pusoy Dos is for 2 to 4 players: 13 cards each (17 with three). 3 is low, 2 is high.',
+    [GameType.GO_FISH]: 'Go Fish uses the full deck: 7 cards each, or 5 with four or more players. The rest form the pile.',
+  };
+  const RANK_PLURALS = { A: 'Aces', J: 'Jacks', Q: 'Queens', K: 'Kings', 6: 'Sixes' };
+  const rankPlural = (rank) => RANK_PLURALS[rank] ?? `${rank}s`;
+  const MAX_PLAY_SIZE = 5;
   const KICK_MESSAGES = {
     host: 'The host removed you from the room.',
     vote: 'The other players voted you out as host.',
@@ -47,6 +60,7 @@
   const $ = (id) => document.getElementById(id);
   const ui = {
     me: $('me'),
+    titleText: $('title-text'),
     status: $('status'),
     table: $('table'),
     timer: $('timer'),
@@ -54,19 +68,39 @@
     seats: $('seats'),
     drawPile: $('draw-pile'),
     drawCount: $('draw-count'),
+    discardWrap: $('discard-wrap'),
     discardPile: $('discard-pile'),
     discardCount: $('discard-count'),
     pick: $('pick'),
     pickLabel: $('pick-label'),
     pickCards: $('pick-cards'),
+    ask: $('ask'),
+    askTargets: $('ask-targets'),
+    askRanks: $('ask-ranks'),
     lastDraw: $('last-draw'),
+    feltLogo: $('felt-logo'),
+    piles: $('piles'),
+    trick: $('trick'),
+    trickLabel: $('trick-label'),
+    trickCards: $('trick-cards'),
+    playControls: $('play-controls'),
+    play: $('play'),
+    pass: $('pass'),
+    clearSelection: $('clear-selection'),
+    selection: $('selection'),
     hand: $('hand'),
     handCount: $('hand-count'),
+    arrangeOptions: document.querySelectorAll('[data-arrange]'),
+    arrangeHint: $('arrange-hint'),
     result: $('result'),
     log: $('log'),
     players: $('players'),
     playerCount: $('player-count'),
     hostControls: $('host-controls'),
+    gameType: $('game-type'),
+    cardsPerPlayerField: $('cards-per-player-field'),
+    settingsHint: $('settings-hint'),
+    rules: document.querySelectorAll('.rules[data-game]'),
     cardsPerPlayer: $('cards-per-player'),
     start: $('start'),
     end: $('end'),
@@ -150,9 +184,11 @@
       if (state.members.length < state.limits.minPlayers) return 'Waiting for more players to join…';
       return state.you.isHost ? 'Pick the settings and start the game.' : `Waiting for ${state.host} to start the game…`;
     }
+    if (game.type === GameType.PUSOY_DOS) return pusoyStatusText(state);
+    if (game.type === GameType.GO_FISH) return goFishStatusText(game);
     if (phase === Phase.FINISHED) {
       if (!game.result.loser) return 'Game over: not enough players.';
-      return game.result.youLost ? "You're stuck with the Old Maid! 👵" : `${game.result.loser} is stuck with the Old Maid!`;
+      return game.result.youLost ? "You're stuck with the Old Maid!" : `${game.result.loser} is stuck with the Old Maid!`;
     }
     if (!game.isPlaying) return `Watching: ${game.turn}'s turn. You'll be dealt in next game.`;
     if (game.isYourTurn) {
@@ -160,11 +196,50 @@
       if (game.target) return `Your turn! Take a card from ${game.target.name}.`;
       return 'Your turn! Draw from the pile.';
     }
-    if (game.safe.includes(state.you.name)) return "You're safe! 🎉 Watch the others finish.";
+    if (game.safe.includes(state.you.name)) return "You're safe! Watch the others finish.";
     return `${game.turn}'s turn…`;
   }
 
+  function pusoyStatusText(state) {
+    const { game } = state;
+    if (game.result) {
+      if (!game.result.winner) return 'Game over: not enough players.';
+      return game.result.youWon ? 'You played all your cards. You win!' : `${game.result.winner} wins!`;
+    }
+    if (!game.isPlaying) return `Watching: ${game.turn}'s turn. You'll be dealt in next game.`;
+    if (!game.isYourTurn) return `${game.turn}'s turn…`;
+    if (game.mustInclude) return `Your lead! Your first play must include the ${CardView.label(game.mustInclude)}.`;
+    if (!game.table) return 'Your lead! Play anything: a single, pair, three of a kind or five-card hand.';
+    const n = game.table.cards.length;
+    return `Your turn! Beat the ${game.table.name} with ${n} ${n === 1 ? 'card' : 'cards'}, or pass.`;
+  }
+
+  function goFishStatusText(game) {
+    if (game.result) return goFishResultText(game.result);
+    if (!game.isPlaying) return `Watching: ${game.turn}'s turn. You'll be dealt in next game.`;
+    if (!game.isYourTurn) return `${game.turn}'s turn…`;
+    return game.canGoFish ? 'Your turn! Nobody else has cards: go fish from the pile.' : 'Your turn! Ask a player for a rank you hold.';
+  }
+
+  function goFishResultText(result) {
+    const { winners, youWon } = result;
+    if (!winners.length) return 'Game over: not enough players.';
+    if (winners.length > 1) return `${youWon ? 'You tied for the win' : 'A tie'}: ${winners.join(', ')}!`;
+    return youWon ? 'You win with the most books!' : `${winners[0]} wins with the most books!`;
+  }
+
   // ---- table -------------------------------------------------------------
+
+  function seatBadge(seat) {
+    if (seat.isLoser) return 'old maid';
+    if (seat.isWinner) return 'winner';
+    if (seat.isSafe) return 'safe';
+    if (seat.isOut) return 'out';
+    if (seat.isTurn) return 'turn';
+    if (seat.hasPassed) return 'passed';
+    if (seat.isLeader) return 'on the table';
+    return '';
+  }
 
   function renderSeats(game) {
     // Seat everyone around the oval, starting with you at the bottom (or the
@@ -179,24 +254,25 @@
       li.style.setProperty('--cx', Math.cos(radians).toFixed(4));
       li.style.setProperty('--cy', Math.sin(radians).toFixed(4));
       li.style.setProperty('--face', `${angle - 90}deg`);
-      li.classList.toggle('seat--turn', seat.isTurn);
-      li.classList.toggle('seat--you', seat.isYou);
-      li.classList.toggle('seat--target', seat.isTarget);
-      li.classList.toggle('seat--safe', seat.isSafe);
-      li.classList.toggle('seat--loser', seat.isLoser);
+      // Boolean(): toggle(name, undefined) flips the class instead of removing it, and
+      // each game only sends the flags it uses.
+      li.classList.toggle('seat--turn', Boolean(seat.isTurn));
+      li.classList.toggle('seat--you', Boolean(seat.isYou));
+      li.classList.toggle('seat--target', Boolean(seat.isTarget));
+      li.classList.toggle('seat--safe', Boolean(seat.isSafe || seat.isOut));
+      li.classList.toggle('seat--loser', Boolean(seat.isLoser));
+      li.classList.toggle('seat--winner', Boolean(seat.isWinner));
+      li.classList.toggle('seat--passed', Boolean(seat.hasPassed));
 
       const cards = seat.hand
         ? seat.hand.map((card) => CardView.face(card, 'card--mini'))
-        : Array.from({ length: Math.min(seat.cardCount, 8) }, () => CardView.back({ extraClass: 'card--mini' }));
+        : Array.from({ length: Math.min(seat.cardCount, 7) }, () => CardView.back({ extraClass: 'card--mini' }));
       const cardFan = make('div', 'seat__fan');
       cardFan.append(...fan(cards));
 
       const ring = make('div', 'seat__ring');
       ring.appendChild(avatar(seat.name, 'avatar seat__avatar'));
-      let badge = '';
-      if (seat.isLoser) badge = '👵 old maid';
-      else if (seat.isSafe) badge = '✓ safe';
-      else if (seat.isTurn) badge = 'turn';
+      const badge = seatBadge(seat);
       if (badge) ring.appendChild(make('span', 'seat__badge', badge));
 
       const chip = make('div', 'seat__chip');
@@ -204,19 +280,28 @@
         make('span', 'seat__name', seat.isYou ? 'You' : seat.name),
         make('span', 'seat__count', `${seat.cardCount} ${seat.cardCount === 1 ? 'card' : 'cards'}`),
       );
+      if (seat.books) {
+        const books = seat.books.length ? `: ${seat.books.join(' ')}` : '';
+        chip.appendChild(make('span', 'seat__books', `${seat.books.length} ${seat.books.length === 1 ? 'book' : 'books'}${books}`));
+      }
       li.append(cardFan, ring, chip);
       return li;
     }));
   }
 
   function renderPiles(game) {
+    const canDraw = Boolean(game.canDrawFromPile || game.canGoFish);
     ui.drawPile.replaceChildren();
     if (game.drawPile.count > 0) ui.drawPile.appendChild(CardView.back());
     ui.drawPile.classList.toggle('pile__stack--deep', game.drawPile.count > 1);
-    ui.drawPile.disabled = !game.canDrawFromPile;
-    ui.drawPile.classList.toggle('pile__stack--active', game.canDrawFromPile);
-    ui.drawPile.setAttribute('aria-label', `Draw pile, ${game.drawPile.count} cards${game.canDrawFromPile ? ': click to draw' : ''}`);
+    ui.drawPile.disabled = !canDraw;
+    ui.drawPile.classList.toggle('pile__stack--active', canDraw);
+    ui.drawPile.setAttribute('aria-label', `Draw pile, ${game.drawPile.count} cards${canDraw ? ': click to draw' : ''}`);
     ui.drawCount.textContent = `Draw pile · ${game.drawPile.count}`;
+
+    // Go Fish lays books down by each seat instead of on a discard pile.
+    ui.discardWrap.hidden = !game.discardPile;
+    if (!game.discardPile) return;
 
     ui.discardPile.replaceChildren(...game.discardPile.top.map((card) => CardView.face(card)));
     ui.discardCount.textContent = `Discards · ${game.discardPile.count}`;
@@ -234,29 +319,154 @@
     }))));
   }
 
-  function lastDrawText(lastDraw) {
+  // ---- Go Fish -----------------------------------------------------------
+
+  /** Who to ask, remembered by name across state updates. */
+  let askTarget = null;
+
+  function renderAsk(game) {
+    const targets = game.type === GameType.GO_FISH ? game.seats.filter((seat) => seat.isTarget) : [];
+    const show = Boolean(game.isYourTurn && targets.length && game.askableRanks.length);
+    ui.ask.hidden = !show;
+    if (!show) return;
+    if (!targets.some((seat) => seat.name === askTarget)) askTarget = targets[0].name;
+    const target = targets.find((seat) => seat.name === askTarget);
+
+    ui.askTargets.replaceChildren(...targets.map((seat) => {
+      const button = make('button', 'button button--small ask__option', `${seat.name} (${seat.cardCount})`);
+      button.type = 'button';
+      button.setAttribute('aria-pressed', String(seat === target));
+      button.addEventListener('click', () => {
+        askTarget = seat.name;
+        renderAsk(game);
+      });
+      return button;
+    }));
+    ui.askRanks.replaceChildren(...game.askableRanks.map((rank) => {
+      const button = make('button', 'button button--small', rankPlural(rank));
+      button.type = 'button';
+      button.setAttribute('aria-label', `Ask ${target.name} for ${rankPlural(rank)}`);
+      button.addEventListener('click', () => socket.emit(Events.ASK, { seat: target.seat, rank }));
+      return button;
+    }));
+  }
+
+  function lastDrawText(game) {
+    if (game.type === GameType.GO_FISH) return game.lastFish ? `You drew ${CardView.label(game.lastFish)}.` : '';
+    const { lastDraw } = game;
     if (!lastDraw) return '';
     const card = CardView.label(lastDraw.card);
     if (lastDraw.you === 'took') return lastDraw.from ? `You took ${card} from ${lastDraw.from}.` : `You drew ${card}.`;
     return `${lastDraw.to} took your ${card}.`;
   }
 
+  // ---- arranging your hand -----------------------------------------------
+
+  const arranger = HandArranger.create({
+    container: ui.hand,
+    onChange: () => renderHandOnly(lastState?.game),
+  });
+
+  /** Re-renders just the hand (after a local change such as rearranging). */
+  function renderHandOnly(game) {
+    if (!game) return;
+    if (game.type === GameType.PUSOY_DOS) renderPusoyHand(game);
+    else renderHand(game);
+  }
+
+  function renderArrangeControls(cardCount) {
+    ui.arrangeOptions.forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset.arrange === arranger.mode));
+    });
+    ui.arrangeHint.hidden = arranger.mode !== HandArranger.Mode.FREE || cardCount < 2;
+  }
+
   function renderHand(game) {
-    const cards = game.hand ?? [];
+    if (arranger.isDragging) return; // re-rendered when the drag ends
+    const cards = arranger.arrange(game.hand ?? []);
     ui.hand.closest('.hand-wrap').hidden = !game.isPlaying;
     ui.handCount.textContent = `(${cards.length})`;
+    renderArrangeControls(cards.length);
     ui.hand.replaceChildren(...fan(cards.map((card) => CardView.face(card))));
     if (game.isPlaying && cards.length === 0) {
-      ui.hand.appendChild(make('p', 'hint', game.result ? 'No cards left.' : 'No cards — you can still draw from the pile.'));
+      const waiting = game.type === GameType.GO_FISH
+        ? "No cards — you'll draw one on your turn."
+        : 'No cards — you can still draw from the pile.';
+      ui.hand.appendChild(make('p', 'hint', game.result || game.drawPile.count === 0 ? 'No cards left.' : waiting));
     }
+  }
+
+  // ---- Pusoy Dos --------------------------------------------------------
+
+  /** Card ids the player has picked to play. Kept across state updates. */
+  let selected = new Set();
+
+  function renderTrick(game) {
+    const { table } = game;
+    ui.trick.hidden = false;
+    if (!table) {
+      ui.trickLabel.textContent = game.result ? 'Table' : 'The table is clear: the leader plays anything.';
+      ui.trickCards.replaceChildren();
+      return;
+    }
+    const by = table.byYou ? 'You' : table.by;
+    ui.trickLabel.textContent = `${by} played ${table.name === 'single' ? 'a single' : `a ${table.name}`}:`;
+    ui.trickCards.replaceChildren(...table.cards.map((card) => CardView.face(card)));
+  }
+
+  function selectionText(game) {
+    if (selected.size === 0) {
+      return game.table ? `Pick ${game.table.cards.length} to play, or pass.` : 'Pick cards to play.';
+    }
+    return `${selected.size} selected`;
+  }
+
+  function renderPusoyHand(game) {
+    if (arranger.isDragging) return; // re-rendered when the drag ends
+    const cards = arranger.arrange(game.hand ?? []);
+    const canAct = game.isYourTurn && !game.result;
+    // Forget picks that are no longer in the hand (played, or a new game).
+    selected = new Set(cards.map((card) => card.id).filter((id) => selected.has(id)));
+    ui.hand.closest('.hand-wrap').hidden = !game.isPlaying;
+    ui.handCount.textContent = `(${cards.length})`;
+    renderArrangeControls(cards.length);
+    ui.hand.replaceChildren(...fan(cards.map((card) => CardView.selectable(card, {
+      selected: selected.has(card.id),
+      disabled: Boolean(game.result),
+      onClick: () => {
+        if (selected.has(card.id)) selected.delete(card.id);
+        else if (selected.size < MAX_PLAY_SIZE) selected.add(card.id);
+        else showToast(`You can play at most ${MAX_PLAY_SIZE} cards.`);
+        renderPusoyHand(game);
+      },
+    }))));
+    if (game.isPlaying && cards.length === 0) ui.hand.appendChild(make('p', 'hint', 'No cards left.'));
+
+    ui.playControls.hidden = !game.isPlaying || Boolean(game.result);
+    ui.play.disabled = !canAct || selected.size === 0;
+    ui.pass.disabled = !game.canPass;
+    ui.clearSelection.disabled = selected.size === 0;
+    ui.selection.textContent = canAct ? selectionText(game) : '';
   }
 
   function renderResult(game) {
     ui.result.hidden = !game.result;
     if (!game.result) return;
+    if (game.type === GameType.PUSOY_DOS) {
+      ui.result.classList.toggle('result--lost', Boolean(game.isPlaying && !game.result.youWon && game.result.winner));
+      ui.result.textContent = game.result.winner
+        ? (game.result.youWon ? 'You win!' : `${game.result.winner} wins!`)
+        : 'Game over: everyone else left.';
+      return;
+    }
+    if (game.type === GameType.GO_FISH) {
+      ui.result.classList.toggle('result--lost', Boolean(game.isPlaying && !game.result.youWon && game.result.winners.length));
+      ui.result.textContent = goFishResultText(game.result);
+      return;
+    }
     ui.result.classList.toggle('result--lost', game.result.youLost);
     ui.result.textContent = game.result.loser
-      ? (game.result.youLost ? 'You lost — you hold the Old Maid! 👵' : `${game.result.loser} holds the Old Maid! 👵`)
+      ? (game.result.youLost ? 'You lost — you hold the Old Maid.' : `${game.result.loser} holds the Old Maid.`)
       : 'Game over: everyone else left.';
   }
 
@@ -267,12 +477,26 @@
       renderTimer(null);
       return;
     }
+    const pusoy = game.type === GameType.PUSOY_DOS;
     renderSeats(game);
     renderTimer(game);
-    renderPiles(game);
-    renderPick(game);
-    ui.lastDraw.textContent = lastDrawText(game.lastDraw);
-    renderHand(game);
+    ui.feltLogo.textContent = titleOf(state);
+    ui.piles.hidden = pusoy;
+    ui.lastDraw.hidden = pusoy;
+    ui.trick.hidden = !pusoy;
+    if (pusoy) {
+      ui.pick.hidden = true;
+      ui.ask.hidden = true;
+      renderTrick(game);
+      renderPusoyHand(game);
+    } else {
+      ui.playControls.hidden = true;
+      renderPiles(game);
+      renderPick(game);
+      renderAsk(game);
+      ui.lastDraw.textContent = lastDrawText(game);
+      renderHand(game);
+    }
     renderResult(game);
     renderList(ui.log, [...game.log].reverse());
   }
@@ -285,7 +509,7 @@
       const li = make('li', 'player');
       li.appendChild(avatar(member.name));
       const name = make('span', 'player__name', member.name);
-      if (member.isHost) name.appendChild(make('span', 'tag tag--host', '👑 host'));
+      if (member.isHost) name.appendChild(make('span', 'tag tag--host', 'host'));
       if (member.isYou) name.appendChild(make('span', 'tag', 'you'));
       if (state.game && !member.inGame) name.appendChild(make('span', 'tag', 'watching'));
       li.appendChild(name);
@@ -307,6 +531,16 @@
     ui.hostControls.hidden = !you.isHost;
     if (!you.isHost) return;
     const playing = phase === Phase.PLAYING;
+
+    ui.gameType.replaceChildren(...state.games.map((game) => {
+      const option = make('option', '', `${game.title} (${game.minPlayers}–${game.maxPlayers} players)`);
+      option.value = game.type;
+      return option;
+    }));
+    ui.gameType.value = settings.game;
+    ui.gameType.disabled = playing;
+    ui.cardsPerPlayerField.hidden = settings.game !== GameType.OLD_MAID;
+    ui.settingsHint.textContent = SETTINGS_HINTS[settings.game] ?? '';
 
     const options = [[DEAL_ALL, 'All cards (classic)']];
     for (let n = 1; n <= settings.maxCardsPerPlayer; n += 1) options.push([n, String(n)]);
@@ -340,8 +574,18 @@
 
   // ---- render --------------------------------------------------------------
 
+  function titleOf(state) {
+    const type = state.game?.type ?? state.settings.game;
+    return state.games.find((game) => game.type === type)?.title ?? 'Cards';
+  }
+
   function render(state) {
-    ui.me.textContent = `You are ${state.you.name}${state.you.isHost ? ' · 👑 host' : ''}`;
+    const title = titleOf(state);
+    const type = state.game?.type ?? state.settings.game;
+    ui.titleText.textContent = title;
+    document.title = title;
+    ui.rules.forEach((rules) => { rules.hidden = rules.dataset.game !== type; });
+    ui.me.textContent = `You are ${state.you.name}${state.you.isHost ? ' · host' : ''}`;
     ui.status.textContent = statusText(state);
     document.body.dataset.phase = state.phase;
     renderTable(state);
@@ -350,6 +594,9 @@
     renderGuestControls(state);
     renderList(ui.activity, [...state.activity].reverse());
   }
+
+  /** The latest state from the server, for re-rendering local changes (card picks). */
+  let lastState = null;
 
   let toastTimer = null;
   function showToast(message) {
@@ -361,7 +608,24 @@
 
   // ---- events --------------------------------------------------------------
 
-  ui.drawPile.addEventListener('click', () => socket.emit(Events.DRAW_FROM_PILE));
+  ui.drawPile.addEventListener('click', () => {
+    const goFish = lastState?.game?.type === GameType.GO_FISH;
+    socket.emit(goFish ? Events.GO_FISH : Events.DRAW_FROM_PILE);
+  });
+  ui.arrangeOptions.forEach((button) => {
+    button.addEventListener('click', () => arranger.setMode(button.dataset.arrange));
+  });
+  ui.play.addEventListener('click', () => {
+    if (selected.size > 0) socket.emit(Events.PLAY_CARDS, [...selected]);
+  });
+  ui.pass.addEventListener('click', () => socket.emit(Events.PASS));
+  ui.clearSelection.addEventListener('click', () => {
+    selected.clear();
+    renderHandOnly(lastState?.game);
+  });
+  ui.gameType.addEventListener('change', () => {
+    socket.emit(Events.UPDATE_SETTINGS, { game: ui.gameType.value });
+  });
   ui.cardsPerPlayer.addEventListener('change', () => {
     socket.emit(Events.UPDATE_SETTINGS, { cardsPerPlayer: Number(ui.cardsPerPlayer.value) });
   });
@@ -382,6 +646,12 @@
   socket.on(Events.STATE, (state) => {
     if (!state) return;
     storage.set(state.you.name);
+    // A new deal: forget the free arrangement of the last game's cards.
+    if (state.phase === Phase.PLAYING && lastState?.phase !== Phase.PLAYING) {
+      arranger.reset();
+      selected.clear(); // card ids repeat between deals
+    }
+    lastState = state;
     render(state);
   });
   socket.on(Events.ERROR, ({ message }) => showToast(message));

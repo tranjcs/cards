@@ -1,7 +1,7 @@
-# Cards (Old Maid)
+# Cards (Old Maid, Pusoy Dos, Go Fish)
 
-A real-time multiplayer card game played with a standard 52-card deck, built with Node.js,
-Express and Socket.IO. The first game is **Old Maid**.
+Real-time multiplayer card games played with a standard 52-card deck, built with Node.js,
+Express and Socket.IO. The host picks the game: **Old Maid**, **Pusoy Dos** or **Go Fish**.
 
 ## Run
 
@@ -19,7 +19,7 @@ Open http://localhost:3000 in two or more browser tabs. Use `npm run dev` to res
 | Variable          | Default   | Description                                                  |
 | ----------------- | --------- | ------------------------------------------------------------ |
 | `PORT`            | `3000`    | HTTP port                                                    |
-| `TURN_TIMEOUT_MS` | `30000`   | Time per turn; when it runs out a random card is drawn for you |
+| `TURN_TIMEOUT_MS` | `30000`   | Time per turn; when it runs out a move is made for you (Old Maid: a random draw; Pusoy Dos: pass, or lead your lowest card; Go Fish: ask a random player for a random rank) |
 | `HOST_KICK_VOTES` | `5`       | Minimum guest votes needed to kick the host                  |
 | `IDLE_TIMEOUT_MS` | `1200000` | Disconnect a client with no activity for this long (20 min)  |
 | `MAX_ROOM_SIZE`   | `50`      | Most people in the room at once                              |
@@ -37,8 +37,9 @@ browser tab, so a reconnecting tab gets its name back).
 
 - The **first** person in is the **host**; everyone else is a **guest**.
 - The **host** decides:
+  - which game to play (Old Maid, Pusoy Dos or Go Fish),
   - when to start the game (at least 2 players),
-  - how many cards each player is dealt (or "all cards", the classic deal),
+  - for Old Maid, how many cards each player is dealt (or "all cards", the classic deal),
   - and can **kick** any player, before or during a game.
 - **Guests** can vote to kick the host. It takes at least **5 votes** (`HOST_KICK_VOTES`);
   a guest can withdraw their vote. When the host leaves or is voted out, the guest who has
@@ -46,8 +47,8 @@ browser tab, so a reconnecting tab gets its name back).
 
 ### Phase 2: dealing and playing
 
-Everyone in the room when the host presses **Start** is dealt in (up to 10 players); anyone
-joining later watches until the next game.
+Everyone in the room when the host presses **Start** is dealt in (up to 10 players for Old Maid
+and Go Fish, 4 for Pusoy Dos); anyone else, and anyone joining later, watches until the next game.
 
 Old Maid rules as implemented:
 
@@ -61,7 +62,51 @@ Old Maid rules as implemented:
 5. Once the draw pile is empty, players with no cards are **safe**. The last player holding a
    card, the Old Maid, loses.
 
-If a player leaves mid-game, their cards go to the next player clockwise. The server is
+If a player leaves mid-game, their cards go to the next player clockwise.
+
+Pusoy Dos ("Big Two") rules as implemented:
+
+1. Cards rank **3 (lowest)** up to K, A, **2 (highest)**; suits break ties: ♣ < ♠ < ♥ < ♦.
+2. Each player is dealt 13 cards (17 with three players); the rest are set aside face down.
+3. Whoever holds the lowest card dealt (the 3♣ with four players) leads, and the first play must
+   include that card.
+4. A play is a single, a pair, three of a kind, or a five-card hand. Five-card hands rank
+   straight < flush < full house < four of a kind (plus any card) < straight flush. Straights run
+   from 3-4-5-6-7 to 10-J-Q-K-A (no 2s, no wrapping round). Singles, pairs, straights, flushes
+   and straight flushes are compared by their highest card; three of a kind, full houses and four
+   of a kind by the rank of the matching cards.
+5. Going clockwise, each player beats the table with a higher play of the same number of cards,
+   or passes. A player who passed may still play on a later turn. When everyone else passes in a
+   row, the last player to play clears the table and leads anything.
+6. The first player to get rid of all their cards wins.
+
+Go Fish rules as implemented (full 52-card deck):
+
+1. Each player is dealt 7 cards (5 with four or more players), clockwise from a random first
+   player. The rest form the **draw pile** (the pond).
+2. On your turn, ask any other player who has cards for a rank you hold. If they have any, they
+   hand **all** of them over and you go again.
+3. If not, **go fish**: draw from the pile. If you draw the rank you asked for, you show it and go
+   again; otherwise play passes clockwise.
+4. Four of a kind make a **book**, laid down automatically.
+5. A player with no cards draws one at the start of their turn; once the pile is empty too,
+   they're out. If nobody else has cards to ask, you just draw from the pile.
+6. When all 13 books are made, the player with the most books wins (ties share the win).
+
+Asks and their results are public, as at a real table; a card fished from the pile is only shown
+to the player who drew it, unless it's the rank they asked for. If a player leaves, their cards
+go to the next player clockwise (their books leave with them); a player who runs out of time
+asks a random player for a random rank.
+
+In any game you can arrange your own hand with the **Value / Suit / Free** buttons: by the
+game's card order, grouped by suit (♣ ♠ ♥ ♦), or in any order you like by dragging cards (on a
+touch screen, press and hold a card first; with a keyboard, Alt + ←/→ moves the focused card).
+Dragging switches to Free. The arrangement only exists in your browser tab.
+
+In Pusoy Dos, a player who runs out of time passes (or, when leading, plays their lowest card). If a player
+leaves, their cards are set aside; if theirs was the play on the table, the next player leads.
+
+The server is
 authoritative: it validates every action, and each client only ever receives its own hand
 (other players' cards are sent as counts).
 
@@ -181,10 +226,14 @@ src/
     Card.js              Immutable playing card, suits and ranks
     Pile.js              Ordered stack of cards (draw pile, discard pile)
     Deck.js              Standard 52-card deck (a Pile)
-    Hand.js              A player's cards; finds and removes pairs
+    Hand.js              A player's cards, kept sorted; finds and removes pairs and books
   game/
     CardGame.js          Base class: seats, random first player, clockwise turns, piles, log
     OldMaidGame.js       Old Maid rules (extends CardGame)
+    PusoyDosGame.js      Pusoy Dos rules (extends CardGame)
+    pusoyDosCombos.js    Pusoy Dos card order, play types and which play beats which
+    GoFishGame.js        Go Fish rules (extends CardGame)
+    games.js             The games the host can choose from
     TurnOrder.js         Clockwise seating and whose turn it is
     GameSettings.js      Host-chosen options (immutable)
   room/
@@ -201,6 +250,7 @@ public/
   index.html             Game page
   css/style.css          Styles (light/dark, phone layout)
   js/cards.js            Renders playing cards
+  js/handArranger.js     Arranging your own hand: by value, by suit, or by dragging
   js/client.js           Browser client
 test/                    Unit tests for every class, plus a Socket.IO integration test
 ```
@@ -213,7 +263,10 @@ deterministically.
 
 New host options (cards drawn per turn, skips, showing or hiding hands, turning the piles
 on or off) belong in `GameSettings` and are read by the game. A different game extends
-`CardGame` and implements its actions plus `removePlayer`, `autoPlay` and `viewFor`.
+`CardGame` and implements its actions plus `removePlayer`, `autoPlay` and `viewFor` (whose
+result carries a `type` the client renders by). Register it in `GameSettings` (`GameType`) and
+`src/game/games.js`, route its actions through `Room` and `app.js`, and render it in
+`public/js/client.js`.
 
 ## Development
 

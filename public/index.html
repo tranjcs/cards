@@ -3,21 +3,34 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#1a1f2e">
-  <title>Old Maid</title>
+  <meta name="color-scheme" content="light dark">
+  <title>Cards</title>
   <link rel="stylesheet" href="/css/style.css">
+  <script src="/js/theme.js"></script>
 </head>
 <body>
   <main class="layout">
     <header class="masthead">
-      <h1 class="title"><span class="title__suit" aria-hidden="true">♠♥</span> Old Maid</h1>
-      <p id="me" class="me"></p>
+      <div class="brand">
+        <div class="suit-tiles" aria-hidden="true">
+          <span class="suit-tile suit-tile--black"><svg viewBox="0 0 24 24"><path d="M12 1.8S3.4 8.4 3.4 13.3a4.3 4.3 0 0 0 7.2 3.2c-.3 2.2-1.2 3.8-2.6 5.2h8c-1.4-1.4-2.3-3-2.6-5.2a4.3 4.3 0 0 0 7.2-3.2C20.6 8.4 12 1.8 12 1.8z"/></svg></span>
+          <span class="suit-tile suit-tile--red"><svg viewBox="0 0 24 24"><path d="M12 21.2s-7.6-4.7-9.7-9.4C.8 8.3 2.9 4.4 6.7 4.4c2.2 0 3.8 1.2 5.3 3.1 1.5-1.9 3.1-3.1 5.3-3.1 3.8 0 5.9 3.9 4.4 7.4-2.1 4.7-9.7 9.4-9.7 9.4z"/></svg></span>
+          <span class="suit-tile suit-tile--black"><svg viewBox="0 0 24 24"><circle cx="12" cy="6.6" r="4.4"/><circle cx="6.6" cy="13.4" r="4.4"/><circle cx="17.4" cy="13.4" r="4.4"/><path d="M10.9 11h2.2c0 4.2.9 7.6 3 10.7H7.9c2.1-3.1 3-6.5 3-10.7z"/></svg></span>
+          <span class="suit-tile suit-tile--red"><svg viewBox="0 0 24 24"><path d="M12 1.8 20.2 12 12 22.2 3.8 12z"/></svg></span>
+        </div>
+        <h1 id="title-text" class="title">Cards</h1>
+      </div>
+      <div class="masthead__side">
+        <p id="me" class="me"></p>
+        <button id="theme-toggle" type="button" class="icon-button" aria-label="Color theme: system" title="Color theme: system">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z"/></svg>
+        </button>
+      </div>
     </header>
 
     <p id="status" class="status" role="status" aria-live="polite">Connecting…</p>
 
-    <section id="table" class="table-area" aria-label="Card table" hidden>
+    <section id="table" class="panel table" aria-label="Card table" hidden>
       <div class="hud">
         <p id="timer" class="timer" role="timer"></p>
         <div class="turn-timer" aria-hidden="true">
@@ -28,22 +41,29 @@
       <div class="arena">
         <div class="rail">
           <div class="felt">
-            <span class="felt__logo" aria-hidden="true">Old Maid</span>
+            <span id="felt-logo" class="felt__logo" aria-hidden="true"></span>
             <div class="center">
               <div id="pick" class="pick" hidden>
                 <p id="pick-label" class="pick__label"></p>
                 <div id="pick-cards" class="fan fan--pick"></div>
               </div>
-              <div class="piles">
+
+              <div id="piles" class="piles">
                 <div class="pile">
                   <button id="draw-pile" type="button" class="pile__stack" aria-label="Draw pile"></button>
                   <span id="draw-count" class="pile__label"></span>
                 </div>
-                <div class="pile">
+                <div id="discard-wrap" class="pile">
                   <div id="discard-pile" class="pile__stack pile__stack--discard" aria-label="Discard pile"></div>
                   <span id="discard-count" class="pile__label"></span>
                 </div>
               </div>
+
+              <div id="trick" class="trick" hidden>
+                <div id="trick-cards" class="trick__cards"></div>
+                <p id="trick-label" class="trick__label"></p>
+              </div>
+
               <p id="last-draw" class="last-draw" aria-live="polite"></p>
             </div>
           </div>
@@ -51,11 +71,36 @@
         <ol id="seats" class="seats" aria-label="Players, clockwise"></ol>
       </div>
 
+      <div id="ask" class="ask" hidden>
+        <div class="ask__group">
+          <p class="ask__label">Ask who?</p>
+          <div id="ask-targets" class="ask__options"></div>
+        </div>
+        <div class="ask__group">
+          <p class="ask__label">For which rank?</p>
+          <div id="ask-ranks" class="ask__options"></div>
+        </div>
+      </div>
+
       <div id="result" class="result" hidden></div>
 
       <div class="hand-wrap">
-        <h2 class="hand-title">Your hand <span id="hand-count" class="count"></span></h2>
-        <div id="hand" class="fan fan--hand"></div>
+        <div class="hand-head">
+          <h2 class="section-title">Your hand <span id="hand-count" class="count"></span></h2>
+          <div class="arrange" role="group" aria-label="Arrange your hand">
+            <button type="button" class="arrange__option" data-arrange="value">Value</button>
+            <button type="button" class="arrange__option" data-arrange="suit">Suit</button>
+            <button type="button" class="arrange__option" data-arrange="free">Free</button>
+          </div>
+        </div>
+        <p id="arrange-hint" class="hint arrange__hint">Drag cards to rearrange them (on a touch screen, press and hold first).<span class="keyboard-tip"> Alt + ←/→ moves a focused card.</span></p>
+        <div id="hand" class="hand fan fan--hand"></div>
+        <div id="play-controls" class="actions play-controls" hidden>
+          <button id="pass" type="button" class="button button--danger">Pass</button>
+          <button id="clear-selection" type="button" class="button button--ghost">Clear</button>
+          <span id="selection" class="selection" aria-live="polite"></span>
+          <button id="play" type="button" class="button button--go">Play</button>
+        </div>
       </div>
 
       <details class="log">
@@ -70,10 +115,14 @@
 
       <form id="host-controls" class="host-controls" hidden>
         <label class="field">
+          <span class="field__label">Game</span>
+          <select id="game-type" class="field__input"></select>
+        </label>
+        <label id="cards-per-player-field" class="field">
           <span class="field__label">Cards per player</span>
           <select id="cards-per-player" class="field__input"></select>
         </label>
-        <p class="hint">Old Maid uses the 52-card deck minus the Q♣. Cards that aren't dealt form the draw pile.</p>
+        <p id="settings-hint" class="hint"></p>
         <div class="actions">
           <button id="start" type="submit" class="button button--primary">Start game</button>
           <button id="end" type="button" class="button button--danger" hidden>End game</button>
@@ -88,13 +137,39 @@
       <ul id="activity" class="activity" aria-label="Room activity"></ul>
     </section>
 
-    <details class="panel rules">
-      <summary>How to play</summary>
+    <details class="panel rules" data-game="old-maid">
+      <summary>How to play Old Maid</summary>
       <ul>
         <li>The Q♣ is removed, so one queen can never be paired: that's the <strong>Old Maid</strong>.</li>
         <li>Cards are dealt clockwise; a random player goes first. Pairs are discarded automatically.</li>
         <li>On your turn, take a hidden card from the next player who has cards, <em>or</em> draw from the draw pile.</li>
         <li>Once the draw pile is empty, anyone without cards is safe. Whoever is left holding the Old Maid loses.</li>
+      </ul>
+    </details>
+
+    <details class="panel rules" data-game="pusoy-dos" hidden>
+      <summary>How to play Pusoy Dos</summary>
+      <ul>
+        <li>2 to 4 players. Each gets 13 cards (17 with three players); any others are set aside unseen.</li>
+        <li>Cards rank <strong>3 (lowest)</strong> up to K, A, <strong>2 (highest)</strong>. Suits break ties: ♣ &lt; ♠ &lt; ♥ &lt; ♦.</li>
+        <li>Whoever has the 3♣ (or the lowest card dealt) leads, and the first play must include that card.</li>
+        <li>Play a <strong>single</strong>, a <strong>pair</strong>, <strong>three of a kind</strong>, or <strong>five cards</strong>:
+          straight &lt; flush &lt; full house &lt; four of a kind (+ any card) &lt; straight flush.</li>
+        <li>Straights run from 3-4-5-6-7 up to 10-J-Q-K-A (no 2s, no wrapping round) and, like flushes, are compared by their highest card. Full houses and four of a kind are compared by the matching cards.</li>
+        <li>On your turn, beat the cards on the table with a higher play of the <em>same number of cards</em>, or pass. You can still play on a later turn after passing.</li>
+        <li>When everyone else passes, the last player to play clears the table and leads anything.</li>
+        <li>The first player to get rid of all their cards wins.</li>
+      </ul>
+    </details>
+
+    <details class="panel rules" data-game="go-fish" hidden>
+      <summary>How to play Go Fish</summary>
+      <ul>
+        <li>2 to 10 players, full 52-card deck. Everyone gets 7 cards (5 with four or more players); the rest form the pile.</li>
+        <li>On your turn, ask any player for a rank you hold. If they have any, they hand them all over and you go again.</li>
+        <li>If not, <strong>go fish</strong>: draw from the pile. Draw the rank you asked for and you go again; otherwise the turn passes.</li>
+        <li>Four of a kind make a <strong>book</strong>, laid down automatically. Run out of cards and you draw one on your turn.</li>
+        <li>When all 13 books are made, whoever has the most wins.</li>
       </ul>
     </details>
   </main>
@@ -110,6 +185,7 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/cards.js"></script>
+  <script src="/js/handArranger.js"></script>
   <script src="/js/client.js"></script>
 </body>
 </html>
