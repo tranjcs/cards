@@ -143,6 +143,47 @@ describe('Room', () => {
     });
   });
 
+  describe('Go Fish', () => {
+    beforeEach(() => {
+      joinAll('a', 'b', 'c');
+      room.updateSettings('a', { game: 'go-fish' });
+    });
+
+    it('offers both games and starts the one the host picked', () => {
+      const state = room.stateFor('b');
+      assert.deepEqual(state.games.map((g) => g.type), ['old-maid', 'go-fish']);
+      assert.equal(state.settings.game, 'go-fish');
+      assert.equal(state.settings.maxCardsPerPlayer, 17);
+      room.startGame('a');
+      assert.equal(room.stateFor('b').game.type, 'go-fish');
+      assert.equal(room.game.drawPile.size, 52 - 21);
+    });
+
+    it("plays asks through the room and refuses Old Maid moves", () => {
+      room.startGame('a');
+      const id = room.game.currentPlayerId;
+      assert.throws(() => room.drawFromPile(id), { code: 'wrong-game' });
+      const target = room.game.targetsFor(id)[0];
+      const rank = room.game.handOf(id).ranks[0];
+      const before = room.game.turnCount;
+      room.ask(id, { seat: room.game.playerIds.indexOf(target), rank });
+      assert.equal(room.game.turnCount, before + 1);
+    });
+
+    it('times out turns and finishes', () => {
+      room.startGame('a');
+      while (!room.game.isOver) mock.timers.tick(room.turnTimeoutMs);
+      assert.equal(room.phase, Phase.FINISHED);
+      assert.ok(room.stateFor('a').game.result.winners.length >= 1);
+    });
+
+    it("refuses Go Fish moves in Old Maid", () => {
+      room.updateSettings('a', { game: 'old-maid' });
+      room.startGame('a');
+      assert.throws(() => room.goFish(room.game.currentPlayerId), { code: 'wrong-game' });
+    });
+  });
+
   describe('limits', () => {
     it('refuses to join beyond capacity', () => {
       create({ maxMembers: 2 });

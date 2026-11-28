@@ -60,6 +60,40 @@ class Hand {
     return pairs;
   }
 
+  /** @returns {string[]} the distinct ranks held, low to high */
+  get ranks() {
+    return [...new Set(this.cards.map((card) => card.rank))];
+  }
+
+  /** @param {string} rank */
+  hasRank(rank) {
+    return this.cards.some((card) => card.rank === rank);
+  }
+
+  /**
+   * Removes and returns every card of a rank.
+   * @param {string} rank
+   * @returns {Card[]}
+   */
+  takeRank(rank) {
+    const taken = this.cards.filter((card) => card.rank === rank);
+    this.cards = this.cards.filter((card) => card.rank !== rank);
+    return taken;
+  }
+
+  /**
+   * Removes every complete set of `size` cards of one rank (a "book" in Go Fish).
+   * @param {number} [size]
+   * @returns {Card[][]} the sets removed
+   */
+  removeSets(size = 4) {
+    const sets = [];
+    for (const rank of this.ranks) {
+      if (this.cards.filter((card) => card.rank === rank).length >= size) sets.push(this.takeRank(rank));
+    }
+    return sets;
+  }
+
   toJSON() {
     return this.cards.map((card) => card.toJSON());
   }

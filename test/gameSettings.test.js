@@ -27,3 +27,24 @@ describe('GameSettings', () => {
     assert.throws(() => new GameSettings().with('nope'), ActionError);
   });
 });
+
+describe('GameSettings game choice', () => {
+  it('plays Old Maid by default and can switch to Go Fish', () => {
+    const settings = new GameSettings();
+    assert.equal(settings.game, 'old-maid');
+    assert.equal(settings.with({ game: 'go-fish' }).game, 'go-fish');
+  });
+
+  it('resets the deal size when the game changes, unless one is given', () => {
+    const seven = new GameSettings().with({ cardsPerPlayer: 7 });
+    assert.equal(seven.with({ game: 'go-fish' }).cardsPerPlayer, DEAL_ALL);
+    assert.equal(seven.with({ game: 'go-fish', cardsPerPlayer: 4 }).cardsPerPlayer, 4);
+    assert.equal(seven.with({ game: 'old-maid' }).cardsPerPlayer, 7);
+  });
+
+  it('rejects unknown games', () => {
+    for (const game of ['poker', '', 1, null]) {
+      assert.throws(() => new GameSettings().with({ game }), ActionError, `game ${game}`);
+    }
+  });
+});

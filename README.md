@@ -1,7 +1,7 @@
-# Cards (Old Maid)
+# Cards (Old Maid, Go Fish)
 
 A real-time multiplayer card game played with a standard 52-card deck, built with Node.js,
-Express and Socket.IO. The first game is **Old Maid**.
+Express and Socket.IO. The host picks the game: **Old Maid** or **Go Fish**.
 
 ## Run
 
@@ -37,8 +37,10 @@ browser tab, so a reconnecting tab gets its name back).
 
 - The **first** person in is the **host**; everyone else is a **guest**.
 - The **host** decides:
+  - which game to play (Old Maid or Go Fish),
   - when to start the game (at least 2 players),
-  - how many cards each player is dealt (or "all cards", the classic deal),
+  - how many cards each player is dealt (or the game's standard deal: all cards for Old Maid,
+    7 each for Go Fish, 5 with four or more players),
   - and can **kick** any player, before or during a game.
 - **Guests** can vote to kick the host. It takes at least **5 votes** (`HOST_KICK_VOTES`);
   a guest can withdraw their vote. When the host leaves or is voted out, the guest who has
@@ -60,6 +62,22 @@ Old Maid rules as implemented:
    clockwise.
 5. Once the draw pile is empty, players with no cards are **safe**. The last player holding a
    card, the Old Maid, loses.
+
+Go Fish rules as implemented (full 52-card deck):
+
+1. Each player is dealt 7 cards (5 with four or more players), clockwise from a random first
+   player. The rest form the **draw pile** (the pond).
+2. On your turn, ask any other player who has cards for a rank you hold. If they have any,
+   they hand **all** of them over and you go again.
+3. If not, **go fish**: draw from the pile. If you draw the rank you asked for, you show it and
+   go again; otherwise play passes clockwise.
+4. Four of a kind make a **book**, laid down automatically.
+5. A player with no cards draws one at the start of their turn; once the pile is empty too,
+   they're out. If nobody else has cards to ask, you just draw from the pile.
+6. When all 13 books are made, the player with the most books wins (ties share the win).
+
+Asks and their results are public, as at a real table; a card fished from the pile is only
+shown to the player who drew it, unless it's the rank they asked for.
 
 If a player leaves mid-game, their cards go to the next player clockwise. The server is
 authoritative: it validates every action, and each client only ever receives its own hand
@@ -170,7 +188,7 @@ src/
   index.js               Entry point: starts the server, handles graceful shutdown
   app.js                 Express + Socket.IO wiring (maps client events to Room methods)
   config.js              Environment-based configuration
-  constants.js           Shared enums: phases, kick reasons, event names
+  constants.js           Shared enums: phases, game types, kick reasons, event names
   errors.js              ActionError: a rejected player action with a safe message
   net/
     requests.js          Client IP (proxy-aware), same-origin check, security headers
@@ -181,10 +199,12 @@ src/
     Card.js              Immutable playing card, suits and ranks
     Pile.js              Ordered stack of cards (draw pile, discard pile)
     Deck.js              Standard 52-card deck (a Pile)
-    Hand.js              A player's cards; finds and removes pairs
+    Hand.js              A player's cards; finds and removes pairs and books
   game/
     CardGame.js          Base class: seats, random first player, clockwise turns, piles, log
     OldMaidGame.js       Old Maid rules (extends CardGame)
+    GoFishGame.js        Go Fish rules (extends CardGame)
+    games.js             The games the host can pick, by GameType
     TurnOrder.js         Clockwise seating and whose turn it is
     GameSettings.js      Host-chosen options (immutable)
   room/
@@ -213,7 +233,10 @@ deterministically.
 
 New host options (cards drawn per turn, skips, showing or hiding hands, turning the piles
 on or off) belong in `GameSettings` and are read by the game. A different game extends
-`CardGame` and implements its actions plus `removePlayer`, `autoPlay` and `viewFor`.
+`CardGame` and implements its actions plus `removePlayer`, `autoPlay` and `viewFor`, then
+gets a `GameType` in `constants.js`, an entry in `game/games.js`, a client event per action
+(`constants.js`, `app.js` and `Room`), and rendering in `public/js/client.js` keyed on the
+view's `type`.
 
 ## Development
 

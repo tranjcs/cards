@@ -277,6 +277,13 @@ button.pile__stack:disabled { cursor: default; }
 .pick__label { margin: 0 0 8px; font-weight: 700; }
 .pick__cards { display: flex; flex-wrap: wrap; gap: 6px; }
 
+.ask__options { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.ask__options:last-child { margin-bottom: 0; }
+.ask__option { background: rgba(255, 255, 255, 0.1); color: var(--felt-fg); border-color: rgba(255, 255, 255, 0.3); }
+.ask__option[aria-pressed="true"] { border-color: var(--turn); box-shadow: 0 0 0 2px var(--turn); }
+.seat__books { font-size: 0.75rem; opacity: 0.9; }
+.seat--winner { border-color: var(--safe); }
+.seat--winner .seat__badge { color: var(--safe); }
 .last-draw { margin: 0; min-height: 1.45em; font-weight: 600; text-align: center; }
 
 .hand { display: flex; flex-wrap: wrap; gap: 6px; min-height: var(--card-h); }
