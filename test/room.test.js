@@ -3,7 +3,8 @@
 const { describe, it, beforeEach, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const { Room } = require('../src/room/Room');
-const { Phase, KickReason } = require('../src/constants');
+const { Phase, KickReason, GameType } = require('../src/constants');
+const { MafiaGame, Role, Stage } = require('../src/game/MafiaGame');
 const { ActionError } = require('../src/errors');
 const { seededRng } = require('./helpers/seededRng');
 
@@ -298,6 +299,145 @@ describe('Room', () => {
     it('returns to the lobby when everyone leaves', () => {
       ['a', 'b', 'c'].forEach((id) => room.leave(id));
       assert.equal(room.phase, Phase.LOBBY);
+    });
+
+    it('logs who ran out of time', () => {
+      const id = room.game.currentPlayerId;
+      mock.timers.tick(room.turnTimeoutMs);
+      assert.ok(room.stateFor('a').game.log.includes(`${room.members.get(id).name} ran out of time.`));
+    });
+
+    it('refuses Mafia moves', () => {
+      assert.throws(() => room.nightPick('a', publicIdOf('b')), { code: 'wrong-game' });
+      assert.throws(() => room.dayVote('a', null), { code: 'wrong-game' });
+    });
+  });
+
+  describe('choosing a game', () => {
+    it('lists the games and the chosen game\'s player limits', () => {
+      joinAll('a', 'b', 'c');
+      const state = room.stateFor('b');
+      assert.deepEqual(state.games.map((g) => g.id), [GameType.OLD_MAID, GameType.MAFIA]);
+      assert.deepEqual(state.limits, { minPlayers: 2, maxPlayers: 10 });
+      room.updateSettings('a', { game: GameType.MAFIA });
+      assert.equal(room.stateFor('b').settings.game, GameType.MAFIA);
+      assert.deepEqual(room.stateFor('b').limits, { minPlayers: 4, maxPlayers: 20 });
+      assert.deepEqual(
+        { maxMafia: room.stateFor('b').settings.maxMafia, autoMafia: room.stateFor('b').settings.autoMafia },
+        { maxMafia: 1, autoMafia: 1 },
+      );
+    });
+
+    it('needs four players for Mafia', () => {
+      joinAll('a', 'b', 'c');
+      room.updateSettings('a', { game: GameType.MAFIA });
+      assert.equal(room.stateFor('a').canStart, false);
+      assert.throws(() => room.startGame('a'), { code: 'player-count' });
+      room.join('d');
+      assert.equal(room.stateFor('a').canStart, true);
+      room.startGame('a');
+      assert.ok(room.game instanceof MafiaGame);
+      assert.equal(room.stateFor('a').game.type, GameType.MAFIA);
+      assert.match(room.stateFor('a').activity.at(-1), /started a game of Mafia/);
+    });
+
+    it('can switch games between games', () => {
+      joinAll('a', 'b', 'c', 'd');
+      room.startGame('a');
+      assert.throws(() => room.updateSettings('a', { game: GameType.MAFIA }), { code: 'game-running' });
+      room.endGame('a');
+      room.updateSettings('a', { game: GameType.MAFIA });
+      room.startGame('a');
+      assert.equal(room.stateFor('a').game.type, GameType.MAFIA);
+    });
+  });
+
+  describe('playing Mafia', () => {
+    const everyone = ['a', 'b', 'c', 'd', 'e'];
+    const withRole = (role) => everyone.filter((id) => room.game.roleOf(id) === role);
+    /** Every living player picks, the Mafia going for `victim`. */
+    const pickAll = (victim) => {
+      for (const id of room.game.livingIds) {
+        const { choices } = room.stateFor(id).game.night;
+        const target = room.game.roleOf(id) === Role.MAFIA ? publicIdOf(victim) : choices[0];
+        room.nightPick(id, target);
+      }
+    };
+
+    beforeEach(() => {
+      create({ rng: seededRng(5) });
+      joinAll(...everyone);
+      room.updateSettings('a', { game: GameType.MAFIA, dayMinutes: 2 });
+      room.startGame('a');
+    });
+
+    it('shows each player only their own role', () => {
+      for (const id of everyone) {
+        const { game } = room.stateFor(id);
+        assert.equal(game.you.role, room.game.roleOf(id));
+        const known = game.seats.filter((s) => s.role).map((s) => s.name);
+        assert.deepEqual(known, [room.members.get(id).name]); // one Mafia member: no teammates
+      }
+    });
+
+    it('takes picks and votes by public id, never revealing connection ids', () => {
+      const [mafia] = withRole(Role.MAFIA);
+      const victim = everyone.find((id) => id !== mafia && room.game.roleOf(id) === Role.VILLAGER);
+      assert.throws(() => room.nightPick(mafia, 'p999'), { code: 'no-such-player' });
+      assert.throws(() => room.nightPick(mafia, { evil: true }), { code: 'no-such-player' });
+      assert.throws(() => room.drawFromPile(mafia), { code: 'wrong-game' });
+      room.nightPick(mafia, publicIdOf(victim));
+      assert.equal(room.stateFor(mafia).game.night.pick, publicIdOf(victim));
+      const state = JSON.stringify(room.stateFor(victim));
+      for (const id of everyone) assert.equal(state.includes(`"${id}"`), false, id);
+    });
+
+    it('moves from night to day once everyone has picked, and back after the vote', () => {
+      const [mafia] = withRole(Role.MAFIA);
+      const victim = everyone.find((id) => id !== mafia && room.game.roleOf(id) === Role.VILLAGER);
+      pickAll(victim);
+      assert.equal(room.game.stage, Stage.DAY);
+      // The victim died, unless the Doctor happened to protect them.
+      assert.ok([...room.game.dead].every((id) => id === victim));
+      const living = room.game.livingIds;
+      for (const id of living) room.dayVote(id, null);
+      assert.equal(room.game.stage, Stage.NIGHT);
+      assert.equal(room.game.round, 2);
+    });
+
+    it('times the night, then the day with the host\'s day length', () => {
+      assert.equal(room.stateFor('a').game.turnRemainingMs, MafiaGame.NIGHT_MS);
+      assert.equal(room.stateFor('a').game.turnTimeoutMs, MafiaGame.NIGHT_MS);
+      mock.timers.tick(MafiaGame.NIGHT_MS);
+      assert.equal(room.game.stage, Stage.DAY);
+      assert.equal(room.game.dead.size, 1); // nobody picked, so the Mafia struck at random
+      assert.equal(room.stateFor('a').game.turnTimeoutMs, 2 * 60 * 1000);
+      mock.timers.tick(60 * 1000);
+      assert.equal(room.stateFor('a').game.turnRemainingMs, 60 * 1000);
+      mock.timers.tick(60 * 1000);
+      assert.equal(room.game.stage, Stage.NIGHT);
+    });
+
+    it('treats a player who leaves as out, naming them in the log', () => {
+      const [mafia] = withRole(Role.MAFIA);
+      const name = room.members.get(mafia).name;
+      room.leave(mafia);
+      assert.equal(room.phase, Phase.FINISHED);
+      const { game } = room.stateFor('a');
+      assert.equal(game.result.winner, 'town');
+      assert.ok(game.log.some((line) => line.startsWith(`${name} left the game. They were Mafia`)));
+      assert.equal(room.stateFor('a').game.turnRemainingMs, null);
+    });
+
+    it('lets dead players and late arrivals watch without acting', () => {
+      mock.timers.tick(MafiaGame.NIGHT_MS);
+      const [dead] = room.game.dead;
+      assert.throws(() => room.dayVote(dead, null), { code: 'eliminated' });
+      room.join('late');
+      const { game } = room.stateFor('late');
+      assert.equal(game.isPlaying, false);
+      assert.equal(game.day.canVote, false);
+      assert.throws(() => room.dayVote('late', null), { code: 'not-playing' });
     });
   });
 });

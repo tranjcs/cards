@@ -1,9 +1,10 @@
-/* global io, CardView */
+/* global io, CardView, MafiaView */
 'use strict';
 
 (() => {
   // Keep in sync with src/constants.js.
   const Phase = { LOBBY: 'lobby', PLAYING: 'playing', FINISHED: 'finished' };
+  const GameType = { OLD_MAID: 'old-maid', MAFIA: 'mafia' };
   const Events = {
     STATE: 'state',
     ERROR: 'action-error',
@@ -15,6 +16,8 @@
     VOTE_KICK_HOST: 'vote-kick-host',
     DRAW_FROM_PLAYER: 'draw-from-player',
     DRAW_FROM_PILE: 'draw-from-pile',
+    NIGHT_PICK: 'night-pick',
+    DAY_VOTE: 'day-vote',
     ACTIVE: 'active',
   };
   const KICK_MESSAGES = {
@@ -29,6 +32,8 @@
   const HEARTBEAT_MS = 60 * 1000;
   const TOAST_MS = 3500;
   const DEAL_ALL = 0;
+  const AUTO_MAFIA = 0;
+  const DAY_MINUTES = [1, 2, 3, 5, 7, 10];
 
   // sessionStorage is per tab, so each tab is its own player. It can throw in
   // private windows or with storage blocked; the game works without it.
@@ -46,6 +51,7 @@
 
   const $ = (id) => document.getElementById(id);
   const ui = {
+    gameTitle: $('game-title'),
     me: $('me'),
     status: $('status'),
     table: $('table'),
@@ -67,7 +73,16 @@
     players: $('players'),
     playerCount: $('player-count'),
     hostControls: $('host-controls'),
+    gameType: $('game-type'),
+    oldMaidOptions: $('old-maid-options'),
     cardsPerPlayer: $('cards-per-player'),
+    mafiaOptions: $('mafia-options'),
+    mafiaCount: $('mafia-count'),
+    mafiaDoctor: $('mafia-doctor'),
+    mafiaDetective: $('mafia-detective'),
+    dayMinutes: $('day-minutes'),
+    rulesOldMaid: $('rules-old-maid'),
+    rulesMafia: $('rules-mafia'),
     start: $('start'),
     end: $('end'),
     guestControls: $('guest-controls'),
@@ -93,23 +108,58 @@
     listEl.replaceChildren(...lines.map((line) => make('li', '', line)));
   }
 
+  /** Replaces a <select>'s options with [value, text] pairs and selects `value`. */
+  function fillSelect(select, options, value) {
+    select.replaceChildren(...options.map(([optionValue, text]) => {
+      const option = make('option', '', text);
+      option.value = String(optionValue);
+      return option;
+    }));
+    select.value = String(value);
+  }
+
+  /** The game being played, or else the one the host has picked. */
+  function shownGame(state) {
+    const type = state.game ? state.game.type : state.settings.game;
+    return state.games.find((game) => game.id === type) ?? state.games[0];
+  }
+
   // ---- timer -------------------------------------------------------------
 
   let timerInterval = null;
 
+  /** Each game's countdown, and how to label it. */
+  const TIMERS = {
+    [GameType.OLD_MAID]: {
+      text: ui.timer,
+      fill: ui.timerFill,
+      label: (game) => (game.isYourTurn ? 'Your turn' : `${game.turn}'s turn`),
+    },
+    [GameType.MAFIA]: { text: $('mafia-timer'), fill: $('mafia-timer-fill'), label: (game) => MafiaView.timerLabel(game) },
+  };
+
+  /** "45s", or "2:05" from a minute up. */
+  function formatSeconds(ms) {
+    const seconds = Math.ceil(ms / 1000);
+    return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  }
+
   function renderTimer(game) {
     clearInterval(timerInterval);
-    const running = game && !game.result && game.turnRemainingMs !== null;
-    ui.timer.hidden = !running;
-    ui.timerFill.parentElement.hidden = !running;
+    const running = Boolean(game && !game.result && game.turnRemainingMs !== null);
+    for (const [type, timer] of Object.entries(TIMERS)) {
+      const show = running && game.type === type;
+      timer.text.hidden = !show;
+      timer.fill.parentElement.hidden = !show;
+    }
     if (!running) return;
+    const timer = TIMERS[game.type];
     const deadline = Date.now() + game.turnRemainingMs;
     const tick = () => {
       const remaining = Math.max(0, deadline - Date.now());
-      const who = game.isYourTurn ? 'Your turn' : `${game.turn}'s turn`;
-      ui.timer.textContent = `${who} · ${Math.ceil(remaining / 1000)}s`;
-      ui.timerFill.style.width = `${(remaining / game.turnTimeoutMs) * 100}%`;
-      ui.timerFill.classList.toggle('turn-timer__fill--low', remaining < 5000);
+      timer.text.textContent = `${timer.label(game)} · ${formatSeconds(remaining)}`;
+      timer.fill.style.width = `${(remaining / game.turnTimeoutMs) * 100}%`;
+      timer.fill.classList.toggle('turn-timer__fill--low', remaining < 5000);
       if (remaining === 0) clearInterval(timerInterval);
     };
     tick();
@@ -121,9 +171,13 @@
   function statusText(state) {
     const { game, phase } = state;
     if (phase === Phase.LOBBY) {
-      if (state.members.length < state.limits.minPlayers) return 'Waiting for more players to join…';
-      return state.you.isHost ? 'Pick the settings and start the game.' : `Waiting for ${state.host} to start the game…`;
+      const { name } = shownGame(state);
+      if (state.members.length < state.limits.minPlayers) {
+        return `${name} needs at least ${state.limits.minPlayers} players. Waiting for more to join…`;
+      }
+      return state.you.isHost ? 'Pick a game and its settings, then start.' : `Waiting for ${state.host} to start ${name}…`;
     }
+    if (game.type === GameType.MAFIA) return MafiaView.statusText(game);
     if (phase === Phase.FINISHED) {
       if (!game.result.loser) return 'Game over: not enough players.';
       return game.result.youLost ? "You're stuck with the Old Maid! 👵" : `${game.result.loser} is stuck with the Old Maid!`;
@@ -219,10 +273,9 @@
       : 'Game over: everyone else left.';
   }
 
-  function renderTable(state) {
-    const { game } = state;
+  /** Old Maid's table. @param {object|null} game */
+  function renderTable(game) {
     ui.table.hidden = !game;
-    renderTimer(game);
     if (!game) return;
     renderSeats(game);
     renderPiles(game);
@@ -258,29 +311,51 @@
     }));
   }
 
+  /** 1..max as options, keeping a saved value visible (marked) if it's now above the cap. */
+  function countOptions(first, max, saved) {
+    const options = [first];
+    for (let n = 1; n <= max; n += 1) options.push([n, String(n)]);
+    if (saved > max) options.push([saved, `${saved} (capped to ${max})`]);
+    return options;
+  }
+
   function renderHostControls(state) {
     const { you, phase, settings } = state;
     ui.hostControls.hidden = !you.isHost;
     if (!you.isHost) return;
     const playing = phase === Phase.PLAYING;
+    const mafia = settings.game === GameType.MAFIA;
 
-    const options = [[DEAL_ALL, 'All cards (classic)']];
-    for (let n = 1; n <= settings.maxCardsPerPlayer; n += 1) options.push([n, String(n)]);
-    // Keep a saved value visible even if more players joined and it's now above the cap.
-    if (settings.cardsPerPlayer > settings.maxCardsPerPlayer) {
-      options.push([settings.cardsPerPlayer, `${settings.cardsPerPlayer} (capped to ${settings.maxCardsPerPlayer})`]);
-    }
-    ui.cardsPerPlayer.replaceChildren(...options.map(([value, text]) => {
-      const option = make('option', '', text);
-      option.value = String(value);
-      return option;
-    }));
-    ui.cardsPerPlayer.value = String(settings.cardsPerPlayer);
-    ui.cardsPerPlayer.disabled = playing;
+    fillSelect(ui.gameType, state.games.map((game) => [game.id, `${game.name} (${game.minPlayers}–${game.maxPlayers} players)`]), settings.game);
+    ui.gameType.disabled = playing;
+    ui.oldMaidOptions.hidden = mafia;
+    ui.mafiaOptions.hidden = !mafia;
+    ui.oldMaidOptions.disabled = playing;
+    ui.mafiaOptions.disabled = playing;
+
+    fillSelect(
+      ui.cardsPerPlayer,
+      countOptions([DEAL_ALL, 'All cards (classic)'], settings.maxCardsPerPlayer, settings.cardsPerPlayer),
+      settings.cardsPerPlayer,
+    );
+    fillSelect(
+      ui.mafiaCount,
+      countOptions(
+        [AUTO_MAFIA, `Auto: ${settings.autoMafia} with ${state.members.length} ${state.members.length === 1 ? 'player' : 'players'}`],
+        settings.maxMafia,
+        settings.mafiaCount,
+      ),
+      settings.mafiaCount,
+    );
+    ui.mafiaDoctor.checked = settings.doctor;
+    ui.mafiaDetective.checked = settings.detective;
+    const minutes = [...new Set([...DAY_MINUTES, settings.dayMinutes])].sort((a, b) => a - b);
+    fillSelect(ui.dayMinutes, minutes.map((n) => [n, `${n} min`]), settings.dayMinutes);
 
     ui.start.hidden = playing;
     ui.start.disabled = !state.canStart;
-    ui.start.textContent = phase === Phase.FINISHED ? 'Play again' : 'Start game';
+    const rematch = phase === Phase.FINISHED && state.game.type === settings.game;
+    ui.start.textContent = rematch ? 'Play again' : 'Start game';
     ui.end.hidden = !state.game;
     ui.end.textContent = playing ? 'End game' : 'Back to lobby';
   }
@@ -297,10 +372,21 @@
   // ---- render --------------------------------------------------------------
 
   function render(state) {
+    const shown = shownGame(state);
+    const { game } = state;
+    ui.gameTitle.textContent = shown.name;
+    document.title = shown.name;
     ui.me.textContent = `You are ${state.you.name}${state.you.isHost ? ' · 👑 host' : ''}`;
     ui.status.textContent = statusText(state);
     document.body.dataset.phase = state.phase;
-    renderTable(state);
+    renderTimer(game);
+    renderTable(game?.type === GameType.OLD_MAID ? game : null);
+    MafiaView.render(game?.type === GameType.MAFIA ? game : null, {
+      onPick: (publicId) => socket.emit(Events.NIGHT_PICK, publicId),
+      onVote: (publicId) => socket.emit(Events.DAY_VOTE, publicId),
+    });
+    ui.rulesOldMaid.hidden = shown.id !== GameType.OLD_MAID;
+    ui.rulesMafia.hidden = shown.id !== GameType.MAFIA;
     renderPlayers(state);
     renderHostControls(state);
     renderGuestControls(state);
@@ -318,9 +404,13 @@
   // ---- events --------------------------------------------------------------
 
   ui.drawPile.addEventListener('click', () => socket.emit(Events.DRAW_FROM_PILE));
-  ui.cardsPerPlayer.addEventListener('change', () => {
-    socket.emit(Events.UPDATE_SETTINGS, { cardsPerPlayer: Number(ui.cardsPerPlayer.value) });
-  });
+  const updateSettings = (changes) => socket.emit(Events.UPDATE_SETTINGS, changes);
+  ui.gameType.addEventListener('change', () => updateSettings({ game: ui.gameType.value }));
+  ui.cardsPerPlayer.addEventListener('change', () => updateSettings({ cardsPerPlayer: Number(ui.cardsPerPlayer.value) }));
+  ui.mafiaCount.addEventListener('change', () => updateSettings({ mafiaCount: Number(ui.mafiaCount.value) }));
+  ui.mafiaDoctor.addEventListener('change', () => updateSettings({ doctor: ui.mafiaDoctor.checked }));
+  ui.mafiaDetective.addEventListener('change', () => updateSettings({ detective: ui.mafiaDetective.checked }));
+  ui.dayMinutes.addEventListener('change', () => updateSettings({ dayMinutes: Number(ui.dayMinutes.value) }));
   ui.hostControls.addEventListener('submit', (event) => {
     event.preventDefault();
     socket.emit(Events.START_GAME);

@@ -7,6 +7,12 @@ const Phase = Object.freeze({
   FINISHED: 'finished', // a game just ended; the host can start another
 });
 
+/** The games the host can choose from. */
+const GameType = Object.freeze({
+  OLD_MAID: 'old-maid',
+  MAFIA: 'mafia',
+});
+
 /** Why a player was removed from the room. */
 const KickReason = Object.freeze({
   HOST: 'host', // the host kicked them
@@ -31,7 +37,9 @@ const Events = Object.freeze({
   VOTE_KICK_HOST: 'vote-kick-host',
   DRAW_FROM_PLAYER: 'draw-from-player',
   DRAW_FROM_PILE: 'draw-from-pile',
+  NIGHT_PICK: 'night-pick', // Mafia: choose who to kill, protect, investigate or suspect
+  DAY_VOTE: 'day-vote', // Mafia: vote someone out (or nobody)
   ACTIVE: 'active', // heartbeat: someone is using this tab
 });
 
-module.exports = { Phase, KickReason, Events };
+module.exports = { Phase, GameType, KickReason, Events };

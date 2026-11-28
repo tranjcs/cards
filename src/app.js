@@ -30,6 +30,8 @@ const ACTIONS = Object.freeze({
   [Events.VOTE_KICK_HOST]: (room, id) => room.voteKickHost(id),
   [Events.DRAW_FROM_PLAYER]: (room, id, index) => room.drawFromPlayer(id, index),
   [Events.DRAW_FROM_PILE]: (room, id) => room.drawFromPile(id),
+  [Events.NIGHT_PICK]: (room, id, publicId) => room.nightPick(id, publicId),
+  [Events.DAY_VOTE]: (room, id, publicId) => room.dayVote(id, publicId),
 });
 
 /** Room.join refusals that end the connection, and the reason the client is shown. */

@@ -9,9 +9,13 @@ const { randomInt, secureRandom } = require('../random');
 const LOG_LIMIT = 50;
 
 /**
- * Shared machinery for turn-based card games: seats in clockwise order with a random
- * first player, a hand per player, a draw pile and a discard pile, and a public log.
- * Pure logic, no networking or timers. Subclasses implement the rules.
+ * Shared machinery for card games: seats in clockwise order with a random first player,
+ * a hand per player, a draw pile and a discard pile, and a public log. Pure logic, no
+ * networking or timers: the room runs the countdown described by `timerKey` and
+ * `timeLimitMs`, and calls `timeOut()` when it runs out. Subclasses implement the rules.
+ *
+ * By default the game is turn-based: each turn is timed, and a player who runs out of
+ * time gets a random legal move (`autoPlay`). Games without turns override the timing.
  */
 class CardGame {
   /**
@@ -91,6 +95,27 @@ class CardGame {
     }
   }
 
+  /**
+   * Names the step being timed (here, the current turn). The room restarts its countdown
+   * whenever this changes.
+   * @returns {string|null} null when nothing is timed
+   */
+  get timerKey() {
+    return this.isOver ? null : `${this.turnCount}:${this.currentPlayerId}`;
+  }
+
+  /** @returns {number|null} how long the current step may take; null for the room's turn time */
+  get timeLimitMs() {
+    return null;
+  }
+
+  /** The countdown ran out: plays a random legal move for whoever's turn it is. */
+  timeOut() {
+    const id = this.currentPlayerId;
+    this.record({ kind: 'timeout', playerId: id });
+    this.autoPlay(id);
+  }
+
   /** @param {object} entry - must not contain private information */
   record(entry) {
     this.log.push(entry);
@@ -127,13 +152,14 @@ class CardGame {
   }
 
   /**
-   * The game as seen by one person: their own hand, everyone else's card counts.
+   * The game as seen by one person, with only what they're allowed to know.
    * @abstract
    * @param {string|null} viewerId - null or an unseated id for spectators
    * @param {(id: string) => string} nameOf
+   * @param {(id: string) => string|null} [publicIdOf] - the id clients use to refer to a player
    */
   // eslint-disable-next-line no-unused-vars
-  viewFor(viewerId, nameOf) {
+  viewFor(viewerId, nameOf, publicIdOf) {
     throw new Error('viewFor() must be implemented by a subclass');
   }
 }

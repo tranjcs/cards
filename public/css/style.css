@@ -20,6 +20,14 @@
   --turn: #facc15;
   --safe: #22c55e;
   --lost: #f97316;
+  --night: #312e81;
+  --night-dark: #1e1b4b;
+  --night-fg: #eef2ff;
+  --day: #fef3c7;
+  --day-dark: #fcd34d;
+  --day-fg: #3b2a05;
+  --over: #334155;
+  --over-dark: #1e293b;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.08);
   --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   --radius: 18px;
@@ -40,6 +48,11 @@
     --felt-dark: #0f3f2a;
     --card-face: #f4f4f5;
     --accent: #3b82f6;
+    --night: #26236b;
+    --night-dark: #12102e;
+    --day: #4a3a12;
+    --day-dark: #2c220a;
+    --day-fg: #fdf6e3;
   }
 }
 
@@ -64,6 +77,15 @@ body {
 
 [hidden] { display: none !important; }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .layout {
   display: grid;
   gap: 16px;
@@ -78,7 +100,7 @@ body {
     align-items: start;
   }
   .masthead, .status { grid-column: 1 / -1; }
-  .table { grid-column: 1; grid-row: 3 / span 2; }
+  .table, .mafia { grid-column: 1; grid-row: 3 / span 2; }
   .lobby, .rules { grid-column: 2; }
   body:not([data-phase="playing"]):not([data-phase="finished"]) .lobby { grid-column: 1 / -1; }
 }
@@ -151,6 +173,10 @@ body {
   background: var(--bg);
   color: var(--fg);
 }
+
+.options { display: grid; gap: 10px; margin: 12px 0 0; padding: 0; border: 0; min-width: 0; }
+.check { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.875rem; }
+.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
 
 /* Players / lobby -------------------------------------------------------- */
 
@@ -293,6 +319,98 @@ button.pile__stack:disabled { cursor: default; }
 
 .log { font-size: 0.8125rem; }
 .log__list { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 2px; opacity: 0.9; }
+
+/* Mafia ------------------------------------------------------------------ */
+
+.mafia {
+  --panel-fg: var(--night-fg);
+  --seat-bg: rgba(255, 255, 255, 0.08);
+  --seat-line: rgba(255, 255, 255, 0.22);
+  --chosen: #a5b4fc;
+  display: grid;
+  gap: 14px;
+  color: var(--panel-fg);
+  background: radial-gradient(circle at 50% 0%, var(--night), var(--night-dark));
+}
+.mafia[data-stage="day"] {
+  --panel-fg: var(--day-fg);
+  --seat-bg: rgba(255, 255, 255, 0.45);
+  --seat-line: rgba(59, 42, 5, 0.2);
+  --chosen: #b45309;
+  background: radial-gradient(circle at 50% 0%, var(--day), var(--day-dark));
+}
+.mafia[data-stage="over"] {
+  --panel-fg: #f1f5f9;
+  --chosen: var(--turn);
+  background: radial-gradient(circle at 50% 0%, var(--over), var(--over-dark));
+}
+@media (prefers-color-scheme: dark) {
+  .mafia[data-stage="day"] { --seat-bg: rgba(0, 0, 0, 0.2); --seat-line: rgba(255, 255, 255, 0.18); --chosen: #fbbf24; }
+}
+.mafia .section-title { color: inherit; }
+.mafia[data-stage="day"] .turn-timer { background: rgba(0, 0, 0, 0.12); }
+
+.mafia__top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.mafia__stage { margin: 0; font-size: 1.375rem; }
+.mafia__setup { margin: 0; font-size: 0.8125rem; opacity: 0.85; }
+.mafia__headline {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--seat-bg);
+  font-weight: 700;
+  text-align: center;
+}
+
+.role { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border-radius: 12px; background: var(--seat-bg); }
+.role__card { flex: none; }
+.role__name { margin: 0; font-size: 1.125rem; font-weight: 800; }
+.role__help { margin: 2px 0 0; font-size: 0.875rem; opacity: 0.9; }
+
+.mafia__action { display: grid; gap: 10px; }
+.mafia__prompt { margin: 0; font-weight: 600; }
+.mafia__team, .mafia__list { margin: 0; padding-left: 18px; font-size: 0.875rem; }
+.mafia__found { font-weight: 800; }
+.mafia__notes { padding: 10px 12px; border-radius: 12px; background: var(--seat-bg); }
+.mafia__nobody { justify-self: start; color: inherit; border-color: var(--seat-line); }
+.mafia__nobody[aria-pressed="true"] { border-color: var(--chosen); color: inherit; box-shadow: inset 0 0 0 1px var(--chosen); }
+
+.mseats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.mseat {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--seat-bg);
+  border: 2px solid transparent;
+}
+.mseat--you { border-color: var(--seat-line); }
+.mseat--chosen { border-color: var(--chosen); }
+.mseat--dead { opacity: 0.6; }
+.mseat--dead .mseat__name { text-decoration: line-through; }
+.mseat__head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mseat__name { font-weight: 700; overflow-wrap: anywhere; }
+.mseat__badge {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+.mseat__role { display: flex; align-items: center; gap: 6px; font-size: 0.8125rem; font-weight: 700; }
+.mseat__votes { font-size: 0.8125rem; opacity: 0.9; }
+.mseat__act { justify-self: start; background: var(--accent); color: var(--accent-fg); }
+.mseat__act[aria-pressed="true"] { background: var(--chosen); color: #111; }
 
 /* Cards ------------------------------------------------------------------ */
 

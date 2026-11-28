@@ -1,24 +1,75 @@
 'use strict';
 
 const { ActionError } = require('../errors');
+const { GameType } = require('../constants');
+
+const GAME_TYPES = Object.freeze(Object.values(GameType));
 
 /** `cardsPerPlayer` value meaning "deal the whole deck". */
 const DEAL_ALL = 0;
 const MAX_CARDS_PER_PLAYER = 51;
 
+/** `mafiaCount` value meaning "pick a number to suit the table". */
+const AUTO_MAFIA = 0;
+/** One ace per Mafia member. */
+const MAX_MAFIA = 4;
+const MIN_DAY_MINUTES = 1;
+const MAX_DAY_MINUTES = 10;
+const DEFAULT_DAY_MINUTES = 3;
+
+/**
+ * @param {unknown} value
+ * @param {number} min
+ * @param {number} max
+ * @param {string} message - shown when the value is out of range
+ */
+function parseInteger(value, min, max, message) {
+  if (!Number.isInteger(value) || value < min || value > max) throw new ActionError('invalid-settings', message);
+  return value;
+}
+
+/** @param {unknown} value @param {string} message */
+function parseFlag(value, message) {
+  if (typeof value !== 'boolean') throw new ActionError('invalid-settings', message);
+  return value;
+}
+
 /**
  * Options the host picks before a game. Immutable: changes produce a new instance.
  *
- * Only the deal size is configurable for now. Future rule options (how many cards
- * per turn, skips, showing or hiding hands, piles on or off) belong here too.
+ * `game` picks the game; the other options belong to one game each and are kept while
+ * another game is chosen. Future rule options (how many cards per turn, skips, showing
+ * or hiding hands, piles on or off) belong here too.
  */
 class GameSettings {
   /**
    * @param {object} [options]
-   * @param {number} [options.cardsPerPlayer] - DEAL_ALL (0) deals the whole deck
+   * @param {string} [options.game] - a GameType
+   * @param {number} [options.cardsPerPlayer] - Old Maid: DEAL_ALL (0) deals the whole deck
+   * @param {number} [options.mafiaCount] - Mafia: AUTO_MAFIA (0) or 1 to MAX_MAFIA
+   * @param {boolean} [options.doctor] - Mafia: deal a Doctor
+   * @param {boolean} [options.detective] - Mafia: deal a Detective
+   * @param {number} [options.dayMinutes] - Mafia: how long each day lasts
    */
-  constructor({ cardsPerPlayer = DEAL_ALL } = {}) {
+  constructor({
+    game = GameType.OLD_MAID,
+    cardsPerPlayer = DEAL_ALL,
+    mafiaCount = AUTO_MAFIA,
+    doctor = true,
+    detective = true,
+    dayMinutes = DEFAULT_DAY_MINUTES,
+  } = {}) {
+    if (!GAME_TYPES.includes(game)) throw new ActionError('invalid-settings', 'Pick one of the games.');
+    this.game = game;
     this.cardsPerPlayer = GameSettings.parseCardsPerPlayer(cardsPerPlayer);
+    this.mafiaCount = parseInteger(
+      mafiaCount, AUTO_MAFIA, MAX_MAFIA, `Mafia members must be a whole number from 1 to ${MAX_MAFIA}, or "auto".`,
+    );
+    this.doctor = parseFlag(doctor, 'Doctor must be on or off.');
+    this.detective = parseFlag(detective, 'Detective must be on or off.');
+    this.dayMinutes = parseInteger(
+      dayMinutes, MIN_DAY_MINUTES, MAX_DAY_MINUTES, `A day lasts ${MIN_DAY_MINUTES} to ${MAX_DAY_MINUTES} minutes.`,
+    );
     Object.freeze(this);
   }
 
@@ -28,25 +79,28 @@ class GameSettings {
    * @returns {number}
    */
   static parseCardsPerPlayer(value) {
-    if (!Number.isInteger(value) || value < DEAL_ALL || value > MAX_CARDS_PER_PLAYER) {
-      throw new ActionError(
-        'invalid-settings',
-        `Cards per player must be a whole number from 1 to ${MAX_CARDS_PER_PLAYER}, or "all".`,
-      );
-    }
-    return value;
+    return parseInteger(
+      value, DEAL_ALL, MAX_CARDS_PER_PLAYER, `Cards per player must be a whole number from 1 to ${MAX_CARDS_PER_PLAYER}, or "all".`,
+    );
   }
 
   /**
-   * @param {unknown} changes - untrusted settings from the client
+   * @param {unknown} changes - untrusted settings from the client; unknown keys are ignored
    * @returns {GameSettings}
    */
   with(changes) {
     if (typeof changes !== 'object' || changes === null) {
       throw new ActionError('invalid-settings', 'Settings must be an object.');
     }
-    const { cardsPerPlayer = this.cardsPerPlayer } = changes;
-    return new GameSettings({ cardsPerPlayer });
+    const {
+      game = this.game,
+      cardsPerPlayer = this.cardsPerPlayer,
+      mafiaCount = this.mafiaCount,
+      doctor = this.doctor,
+      detective = this.detective,
+      dayMinutes = this.dayMinutes,
+    } = changes;
+    return new GameSettings({ game, cardsPerPlayer, mafiaCount, doctor, detective, dayMinutes });
   }
 
   get dealsAll() {
@@ -54,8 +108,17 @@ class GameSettings {
   }
 
   toJSON() {
-    return { cardsPerPlayer: this.cardsPerPlayer };
+    const { game, cardsPerPlayer, mafiaCount, doctor, detective, dayMinutes } = this;
+    return { game, cardsPerPlayer, mafiaCount, doctor, detective, dayMinutes };
   }
 }
 
-module.exports = { GameSettings, DEAL_ALL, MAX_CARDS_PER_PLAYER };
+module.exports = {
+  GameSettings,
+  DEAL_ALL,
+  MAX_CARDS_PER_PLAYER,
+  AUTO_MAFIA,
+  MAX_MAFIA,
+  MIN_DAY_MINUTES,
+  MAX_DAY_MINUTES,
+};

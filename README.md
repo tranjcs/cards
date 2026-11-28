@@ -1,7 +1,7 @@
-# Cards (Old Maid)
+# Cards (Old Maid, Mafia)
 
-A real-time multiplayer card game played with a standard 52-card deck, built with Node.js,
-Express and Socket.IO. The first game is **Old Maid**.
+Real-time multiplayer games played with a standard 52-card deck, built with Node.js, Express
+and Socket.IO. The host picks **Old Maid** or **Mafia**.
 
 ## Run
 
@@ -19,7 +19,7 @@ Open http://localhost:3000 in two or more browser tabs. Use `npm run dev` to res
 | Variable          | Default   | Description                                                  |
 | ----------------- | --------- | ------------------------------------------------------------ |
 | `PORT`            | `3000`    | HTTP port                                                    |
-| `TURN_TIMEOUT_MS` | `30000`   | Time per turn; when it runs out a random card is drawn for you |
+| `TURN_TIMEOUT_MS` | `30000`   | Time per turn in Old Maid; when it runs out a random card is drawn for you |
 | `HOST_KICK_VOTES` | `5`       | Minimum guest votes needed to kick the host                  |
 | `IDLE_TIMEOUT_MS` | `1200000` | Disconnect a client with no activity for this long (20 min)  |
 | `MAX_ROOM_SIZE`   | `50`      | Most people in the room at once                              |
@@ -37,8 +37,8 @@ browser tab, so a reconnecting tab gets its name back).
 
 - The **first** person in is the **host**; everyone else is a **guest**.
 - The **host** decides:
-  - when to start the game (at least 2 players),
-  - how many cards each player is dealt (or "all cards", the classic deal),
+  - which game to play, and when to start it (Old Maid needs 2 players, Mafia 4),
+  - the game's options (below),
   - and can **kick** any player, before or during a game.
 - **Guests** can vote to kick the host. It takes at least **5 votes** (`HOST_KICK_VOTES`);
   a guest can withdraw their vote. When the host leaves or is voted out, the guest who has
@@ -46,10 +46,13 @@ browser tab, so a reconnecting tab gets its name back).
 
 ### Phase 2: dealing and playing
 
-Everyone in the room when the host presses **Start** is dealt in (up to 10 players); anyone
-joining later watches until the next game.
+Everyone in the room when the host presses **Start** is dealt in (up to 10 players for Old Maid,
+20 for Mafia); anyone joining later watches until the next game.
 
-Old Maid rules as implemented:
+### Old Maid
+
+The host picks how many cards each player is dealt (or "all cards", the classic deal).
+Rules as implemented:
 
 1. The Q♣ is removed from the 52-card deck, so one queen can never be paired: the **Old Maid**.
 2. The deck is shuffled, a **random player starts**, and cards are dealt one at a time
@@ -65,13 +68,49 @@ If a player leaves mid-game, their cards go to the next player clockwise. The se
 authoritative: it validates every action, and each client only ever receives its own hand
 (other players' cards are sent as counts).
 
+### Mafia
+
+The party game, with playing cards as role cards. There's no chat: talk in person or on a call,
+and the app deals the roles, runs the night and counts the votes. The host picks how many
+**Mafia members** there are ("auto" is about one per four players), whether to deal a **Doctor**
+and a **Detective**, and how long each **day** lasts (1 to 10 minutes; 3 by default).
+
+1. Everyone is dealt one card face down. An **ace** makes you **Mafia**, the **Q♥** the
+   **Doctor**, the **K♠** the **Detective**, and a number card a **Villager**. The Mafia know
+   each other. There are never so many Mafia that one kill could leave them level with the town,
+   so the town always gets a first day.
+2. **Night** (45 seconds) comes first. Every living player picks someone:
+   - the **Mafia** pick who to kill; teammates see each other's picks, and the most popular pick
+     wins (ties are broken at random);
+   - the **Doctor** picks who to protect, themselves included, but never the same person two
+     nights running;
+   - the **Detective** picks who to investigate, and alone learns whether they're Mafia;
+   - **Villagers** pick a suspect. It does nothing, but since everyone taps their screen at night,
+     nobody can tell who has a role.
+
+   The night ends once everyone has picked, or when time runs out. If no Mafia member picked
+   by then, the Mafia kill someone at random. At dawn the victim is out, unless the Doctor
+   protected them.
+3. **Day.** Everyone talks it over, then each living player votes for someone or for nobody.
+   Votes are public and can be changed. The day ends once everyone has voted, or when time runs
+   out (anyone who didn't vote abstains). The player with the most votes is out, unless it's a
+   tie or "nobody" has as many votes.
+4. A player who is out, whether killed, voted out or gone from the room, has their card turned
+   face up. The **town wins** when every Mafia member is out; the **Mafia win** as soon as they
+   match the town in number. Then every card is shown.
+
+Players who are out, and anyone who joined late, watch without acting.
+
 ## Security
 
 The server is authoritative and treats everything from clients as untrusted:
 
 - **Hidden information stays hidden.** Each client only receives its own hand; other hands are
   sent as card counts. The card you took is only revealed to you and the player you took it from.
-  Shuffles use `crypto`, and picks from another player's face-down cards are random.
+  In Mafia, a client learns only its own role, the Mafia their teammates (and their night picks),
+  and the Detective what they investigated; night picks are never sent to anyone else. Roles are
+  revealed only for players who are out, and for everyone once the game ends. Shuffles use
+  `crypto`, and picks from another player's face-down cards are random.
 - **Input validation.** Every action checks the sender's role and turn and validates its payload;
   bad input gets an error message, never a crash. Messages over 4 KB are refused.
 - **Cross-site connections are refused.** WebSockets aren't covered by CORS, so the server checks
@@ -183,12 +222,14 @@ src/
     Deck.js              Standard 52-card deck (a Pile)
     Hand.js              A player's cards; finds and removes pairs
   game/
-    CardGame.js          Base class: seats, random first player, clockwise turns, piles, log
+    CardGame.js          Base class: seats, random first player, clockwise turns, piles, log, timing hooks
     OldMaidGame.js       Old Maid rules (extends CardGame)
+    MafiaGame.js         Mafia rules: role cards, nights, day votes, win check (extends CardGame)
+    games.js             The games the host can pick, by type
     TurnOrder.js         Clockwise seating and whose turn it is
-    GameSettings.js      Host-chosen options (immutable)
+    GameSettings.js      Host-chosen game and options (immutable)
   room/
-    Room.js              Host/guests, settings, kicks, host vote, turn timer, per-player views
+    Room.js              Host/guests, settings, kicks, host vote, countdown, per-player views
     Player.js            A connected player
     NameAllocator.js     "Player N" names, reclaimable on reconnect
     KickVote.js          Votes to kick the host
@@ -201,8 +242,9 @@ public/
   index.html             Game page
   css/style.css          Styles (light/dark, phone layout)
   js/cards.js            Renders playing cards
+  js/mafia.js            Renders the Mafia table
   js/client.js           Browser client
-test/                    Unit tests for every class, plus a Socket.IO integration test
+test/                    Unit tests for every class, plus Socket.IO integration tests
 ```
 
 The layers only depend downwards: `app` → `room` → `game` → `cards`. Everything below `app`
@@ -213,7 +255,11 @@ deterministically.
 
 New host options (cards drawn per turn, skips, showing or hiding hands, turning the piles
 on or off) belong in `GameSettings` and are read by the game. A different game extends
-`CardGame` and implements its actions plus `removePlayer`, `autoPlay` and `viewFor`.
+`CardGame`, sets the statics `TYPE`, `TITLE`, `MIN_PLAYERS`, `MAX_PLAYERS` and `optionLimits()`,
+and implements its actions plus `removePlayer` and `viewFor`. A turn-based game also implements
+`autoPlay` (a random move when a turn times out); a game without turns, like Mafia, overrides
+`timerKey`, `timeLimitMs` and `timeOut` instead. Register it in `games.js` and `GameType`, map
+its client events to `Room` methods in `app.js`, and render it in `public/js`.
 
 ## Development
 

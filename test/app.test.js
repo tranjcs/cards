@@ -4,7 +4,7 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { io: connect } = require('socket.io-client');
 const { createApp } = require('../src/app');
-const { Events, Phase, KickReason } = require('../src/constants');
+const { Events, Phase, KickReason, GameType } = require('../src/constants');
 const { seededRng } = require('./helpers/seededRng');
 
 /** Resolves with the next `event` payload matching `predicate`. */
@@ -51,7 +51,7 @@ describe('app (Socket.IO integration)', () => {
   it('serves the client page', async () => {
     const res = await fetch(url);
     assert.equal(res.status, 200);
-    assert.match(await res.text(), /<title>Old Maid<\/title>/);
+    assert.match(await res.text(), /<title>Cards<\/title>/);
   });
 
   it('runs the lobby, kicks, votes and a game end to end', async () => {
@@ -109,6 +109,69 @@ describe('app (Socket.IO integration)', () => {
     assert.ok((await next(socket, Events.ERROR)).message);
     socket.emit(Events.DRAW_FROM_PLAYER, { evil: true });
     assert.ok((await next(socket, Events.ERROR)).message);
+  });
+});
+
+describe('app (Mafia over Socket.IO)', () => {
+  let server;
+  let io;
+  let room;
+  let url;
+  const sockets = [];
+
+  const join = async () => {
+    const socket = connect(url, { forceNew: true, transports: ['websocket'] });
+    sockets.push(socket);
+    socket.state = await next(socket, Events.STATE);
+    socket.on(Events.STATE, (state) => { socket.state = state; });
+    return socket;
+  };
+
+  before(async () => {
+    ({ server, io, room } = createApp({ rng: seededRng(3) }));
+    await new Promise((resolve) => server.listen(0, resolve));
+    url = `http://localhost:${server.address().port}`;
+  });
+
+  after(async () => {
+    sockets.forEach((s) => s.disconnect());
+    room.dispose();
+    await new Promise((resolve) => io.close(resolve));
+  });
+
+  it('deals secret roles and plays a night through to the day vote', async () => {
+    const players = [];
+    for (let i = 0; i < 5; i += 1) players.push(await join());
+    const [host] = players;
+    host.emit(Events.UPDATE_SETTINGS, { game: GameType.MAFIA });
+    await next(host, Events.STATE, (s) => s.settings.game === GameType.MAFIA);
+    host.emit(Events.START_GAME);
+    await Promise.all(players.map((p) => (p.state.phase === Phase.PLAYING
+      ? null : next(p, Events.STATE, (s) => s.phase === Phase.PLAYING))));
+
+    // Everyone knows their own role, and only one Mafia member means nobody knows anyone else's.
+    for (const p of players) {
+      assert.equal(p.state.game.type, GameType.MAFIA);
+      assert.ok(p.state.game.you.role);
+      assert.equal(p.state.game.seats.filter((seat) => seat.role).length, 1);
+    }
+
+    // Everyone picks; the night ends and the day begins.
+    const daybreak = Promise.all(players.map((p) => next(p, Events.STATE, (s) => s.game.stage !== 'night')));
+    for (const p of players) p.emit(Events.NIGHT_PICK, p.state.game.night.choices[0]);
+    const [day] = await daybreak;
+    assert.equal(day.game.stage, 'day');
+    assert.ok(day.game.headline);
+
+    // A living player votes for nobody; everyone sees it.
+    const voter = players.find((p) => p.state.game.day.canVote);
+    const tallied = next(host, Events.STATE, (s) => s.game.day?.nobodyVotes === 1);
+    voter.emit(Events.DAY_VOTE, null);
+    await tallied;
+
+    // Old Maid moves are refused.
+    voter.emit(Events.DRAW_FROM_PILE);
+    assert.equal((await next(voter, Events.ERROR)).code, 'wrong-game');
   });
 });
 
