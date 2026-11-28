@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="color-scheme" content="light dark">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#1a1f2e">
   <title>Old Maid</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
@@ -16,40 +17,48 @@
 
     <p id="status" class="status" role="status" aria-live="polite">Connecting…</p>
 
-    <section id="table" class="panel table" aria-label="Card table" hidden>
-      <div class="turn-timer" aria-hidden="true">
-        <div id="timer-fill" class="turn-timer__fill"></div>
-      </div>
-      <p id="timer" class="timer" role="timer"></p>
-
-      <ol id="seats" class="seats" aria-label="Players, clockwise"></ol>
-
-      <div class="piles">
-        <div class="pile">
-          <button id="draw-pile" type="button" class="pile__stack" aria-label="Draw pile"></button>
-          <span id="draw-count" class="pile__label"></span>
-        </div>
-        <div class="pile">
-          <div id="discard-pile" class="pile__stack pile__stack--discard" aria-label="Discard pile"></div>
-          <span id="discard-count" class="pile__label"></span>
+    <section id="table" class="table-area" aria-label="Card table" hidden>
+      <div class="hud">
+        <p id="timer" class="timer" role="timer"></p>
+        <div class="turn-timer" aria-hidden="true">
+          <div id="timer-fill" class="turn-timer__fill"></div>
         </div>
       </div>
 
-      <div id="pick" class="pick" hidden>
-        <p id="pick-label" class="pick__label"></p>
-        <div id="pick-cards" class="pick__cards"></div>
-      </div>
-
-      <p id="last-draw" class="last-draw" aria-live="polite"></p>
-
-      <div class="hand-wrap">
-        <h2 class="section-title">Your hand <span id="hand-count" class="count"></span></h2>
-        <div id="hand" class="hand"></div>
+      <div class="arena">
+        <div class="rail">
+          <div class="felt">
+            <span class="felt__logo" aria-hidden="true">Old Maid</span>
+            <div class="center">
+              <div id="pick" class="pick" hidden>
+                <p id="pick-label" class="pick__label"></p>
+                <div id="pick-cards" class="fan fan--pick"></div>
+              </div>
+              <div class="piles">
+                <div class="pile">
+                  <button id="draw-pile" type="button" class="pile__stack" aria-label="Draw pile"></button>
+                  <span id="draw-count" class="pile__label"></span>
+                </div>
+                <div class="pile">
+                  <div id="discard-pile" class="pile__stack pile__stack--discard" aria-label="Discard pile"></div>
+                  <span id="discard-count" class="pile__label"></span>
+                </div>
+              </div>
+              <p id="last-draw" class="last-draw" aria-live="polite"></p>
+            </div>
+          </div>
+        </div>
+        <ol id="seats" class="seats" aria-label="Players, clockwise"></ol>
       </div>
 
       <div id="result" class="result" hidden></div>
 
-      <details class="log" open>
+      <div class="hand-wrap">
+        <h2 class="hand-title">Your hand <span id="hand-count" class="count"></span></h2>
+        <div id="hand" class="fan fan--hand"></div>
+      </div>
+
+      <details class="log">
         <summary>Game log</summary>
         <ul id="log" class="log__list"></ul>
       </details>

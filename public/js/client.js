@@ -93,6 +93,27 @@
     listEl.replaceChildren(...lines.map((line) => make('li', '', line)));
   }
 
+  const AVATARS = ['🐻', '🦊', '🐸', '🐼', '🐷', '🐨', '🐯', '🐰', '🐵', '🐱', '🐶', '🦁'];
+
+  /** A round avatar with an animal and a colour picked from the player's name. */
+  function avatar(name, className = 'avatar') {
+    const number = Number(name.replace(/\D/g, ''));
+    const seed = number || [...name].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+    const el = make('span', className, AVATARS[seed % AVATARS.length]);
+    el.style.setProperty('--hue', String((seed * 47) % 360));
+    el.setAttribute('aria-hidden', 'true');
+    return el;
+  }
+
+  /** Lays cards out as a fan by giving each its index and the count. */
+  function fan(cards) {
+    cards.forEach((card, index) => {
+      card.style.setProperty('--i', String(index));
+      card.style.setProperty('--n', String(cards.length));
+    });
+    return cards;
+  }
+
   // ---- timer -------------------------------------------------------------
 
   let timerInterval = null;
@@ -110,6 +131,11 @@
       ui.timer.textContent = `${who} · ${Math.ceil(remaining / 1000)}s`;
       ui.timerFill.style.width = `${(remaining / game.turnTimeoutMs) * 100}%`;
       ui.timerFill.classList.toggle('turn-timer__fill--low', remaining < 5000);
+      const ring = ui.seats.querySelector('.seat--turn .seat__ring');
+      if (ring) {
+        ring.style.setProperty('--p', String(remaining / game.turnTimeoutMs));
+        ring.classList.toggle('seat__ring--low', remaining < 5000);
+      }
       if (remaining === 0) clearInterval(timerInterval);
     };
     tick();
@@ -141,29 +167,44 @@
   // ---- table -------------------------------------------------------------
 
   function renderSeats(game) {
-    ui.seats.replaceChildren(...game.seats.map((seat) => {
+    // Seat everyone around the oval, starting with you at the bottom (or the
+    // first player when watching) and going clockwise.
+    const count = game.seats.length;
+    const first = Math.max(0, game.seats.findIndex((seat) => seat.isYou));
+    ui.seats.replaceChildren(...game.seats.map((seat, index) => {
+      const position = (index - first + count) % count;
+      const angle = 90 + (position * 360) / count;
+      const radians = (angle * Math.PI) / 180;
       const li = make('li', 'seat');
+      li.style.setProperty('--cx', Math.cos(radians).toFixed(4));
+      li.style.setProperty('--cy', Math.sin(radians).toFixed(4));
+      li.style.setProperty('--face', `${angle - 90}deg`);
       li.classList.toggle('seat--turn', seat.isTurn);
       li.classList.toggle('seat--you', seat.isYou);
       li.classList.toggle('seat--target', seat.isTarget);
       li.classList.toggle('seat--safe', seat.isSafe);
       li.classList.toggle('seat--loser', seat.isLoser);
 
-      const name = make('span', 'seat__name', seat.isYou ? `${seat.name} (you)` : seat.name);
-      const count = make('span', 'seat__count', `${seat.cardCount} ${seat.cardCount === 1 ? 'card' : 'cards'}`);
-      const fan = make('div', 'seat__fan');
-      if (seat.hand) {
-        seat.hand.forEach((card) => fan.appendChild(CardView.face(card, 'card--mini')));
-      } else {
-        const shown = Math.min(seat.cardCount, 8);
-        for (let i = 0; i < shown; i += 1) fan.appendChild(CardView.back({ extraClass: 'card--mini' }));
-      }
-      const badges = [];
-      if (seat.isTurn) badges.push('▶ turn');
-      if (seat.isSafe) badges.push('✓ safe');
-      if (seat.isLoser) badges.push('👵 old maid');
-      li.append(name, count, fan);
-      if (badges.length) li.appendChild(make('span', 'seat__badge', badges.join(' · ')));
+      const cards = seat.hand
+        ? seat.hand.map((card) => CardView.face(card, 'card--mini'))
+        : Array.from({ length: Math.min(seat.cardCount, 8) }, () => CardView.back({ extraClass: 'card--mini' }));
+      const cardFan = make('div', 'seat__fan');
+      cardFan.append(...fan(cards));
+
+      const ring = make('div', 'seat__ring');
+      ring.appendChild(avatar(seat.name, 'avatar seat__avatar'));
+      let badge = '';
+      if (seat.isLoser) badge = '👵 old maid';
+      else if (seat.isSafe) badge = '✓ safe';
+      else if (seat.isTurn) badge = 'turn';
+      if (badge) ring.appendChild(make('span', 'seat__badge', badge));
+
+      const chip = make('div', 'seat__chip');
+      chip.append(
+        make('span', 'seat__name', seat.isYou ? 'You' : seat.name),
+        make('span', 'seat__count', `${seat.cardCount} ${seat.cardCount === 1 ? 'card' : 'cards'}`),
+      );
+      li.append(cardFan, ring, chip);
       return li;
     }));
   }
@@ -171,6 +212,7 @@
   function renderPiles(game) {
     ui.drawPile.replaceChildren();
     if (game.drawPile.count > 0) ui.drawPile.appendChild(CardView.back());
+    ui.drawPile.classList.toggle('pile__stack--deep', game.drawPile.count > 1);
     ui.drawPile.disabled = !game.canDrawFromPile;
     ui.drawPile.classList.toggle('pile__stack--active', game.canDrawFromPile);
     ui.drawPile.setAttribute('aria-label', `Draw pile, ${game.drawPile.count} cards${game.canDrawFromPile ? ': click to draw' : ''}`);
@@ -186,11 +228,10 @@
     if (!show) return;
     const { name, cardCount } = game.target;
     ui.pickLabel.textContent = `Pick a card from ${name}:`;
-    ui.pickCards.replaceChildren(...Array.from({ length: cardCount }, (_, index) => CardView.back({
-      extraClass: 'card--pickable',
+    ui.pickCards.replaceChildren(...fan(Array.from({ length: cardCount }, (_, index) => CardView.back({
       label: `Take card ${index + 1} of ${cardCount} from ${name}`,
       onClick: () => socket.emit(Events.DRAW_FROM_PLAYER, index),
-    })));
+    }))));
   }
 
   function lastDrawText(lastDraw) {
@@ -204,7 +245,7 @@
     const cards = game.hand ?? [];
     ui.hand.closest('.hand-wrap').hidden = !game.isPlaying;
     ui.handCount.textContent = `(${cards.length})`;
-    ui.hand.replaceChildren(...cards.map((card) => CardView.face(card)));
+    ui.hand.replaceChildren(...fan(cards.map((card) => CardView.face(card))));
     if (game.isPlaying && cards.length === 0) {
       ui.hand.appendChild(make('p', 'hint', game.result ? 'No cards left.' : 'No cards — you can still draw from the pile.'));
     }
@@ -222,9 +263,12 @@
   function renderTable(state) {
     const { game } = state;
     ui.table.hidden = !game;
-    renderTimer(game);
-    if (!game) return;
+    if (!game) {
+      renderTimer(null);
+      return;
+    }
     renderSeats(game);
+    renderTimer(game);
     renderPiles(game);
     renderPick(game);
     ui.lastDraw.textContent = lastDrawText(game.lastDraw);
@@ -239,7 +283,7 @@
     ui.playerCount.textContent = `(${state.members.length})`;
     ui.players.replaceChildren(...state.members.map((member) => {
       const li = make('li', 'player');
-      li.appendChild(make('span', 'avatar', member.name.replace(/\D/g, '') || member.name.charAt(0)));
+      li.appendChild(avatar(member.name));
       const name = make('span', 'player__name', member.name);
       if (member.isHost) name.appendChild(make('span', 'tag tag--host', '👑 host'));
       if (member.isYou) name.appendChild(make('span', 'tag', 'you'));
