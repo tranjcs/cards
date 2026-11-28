@@ -20,8 +20,9 @@ class CardGame {
    * @param {number} options.minPlayers
    * @param {number} options.maxPlayers
    * @param {import('../random').Rng} [options.rng]
+   * @param {(a: import('../cards/Card').Card, b: import('../cards/Card').Card) => number} [options.handOrder]
    */
-  constructor({ playerIds, minPlayers, maxPlayers, rng = secureRandom }) {
+  constructor({ playerIds, minPlayers, maxPlayers, rng = secureRandom, handOrder }) {
     if (new Set(playerIds).size !== playerIds.length) throw new RangeError('Duplicate player ids');
     if (playerIds.length < minPlayers || playerIds.length > maxPlayers) {
       throw new ActionError(
@@ -31,7 +32,7 @@ class CardGame {
     }
     this.rng = rng;
     /** @type {Map<string, Hand>} */
-    this.hands = new Map(playerIds.map((id) => [id, new Hand()]));
+    this.hands = new Map(playerIds.map((id) => [id, new Hand([], handOrder)]));
     this.turnOrder = new TurnOrder(playerIds, randomInt(playerIds.length, rng));
     this.drawPile = new Pile();
     this.discardPile = new Pile();

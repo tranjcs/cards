@@ -112,6 +112,57 @@ describe('app (Socket.IO integration)', () => {
   });
 });
 
+describe('app (Pusoy Dos)', () => {
+  let server;
+  let io;
+  let room;
+  let url;
+  const sockets = [];
+  const join = async () => {
+    const socket = connect(url, { forceNew: true, transports: ['websocket'] });
+    sockets.push(socket);
+    socket.state = await next(socket, Events.STATE);
+    socket.on(Events.STATE, (state) => { socket.state = state; });
+    return socket;
+  };
+
+  before(async () => {
+    ({ server, io, room } = createApp({ rng: seededRng(4) }));
+    await new Promise((resolve) => server.listen(0, resolve));
+    url = `http://localhost:${server.address().port}`;
+  });
+
+  after(async () => {
+    sockets.forEach((s) => s.disconnect());
+    room.dispose();
+    await new Promise((resolve) => io.close(resolve));
+  });
+
+  it('plays Pusoy Dos over the socket', async () => {
+    const host = await join();
+    const guest = await join();
+    const hostSocket = host;
+    hostSocket.emit(Events.UPDATE_SETTINGS, { game: 'pusoy-dos' });
+    await next(hostSocket, Events.STATE, (s) => s.settings.game === 'pusoy-dos');
+    hostSocket.emit(Events.START_GAME);
+    await Promise.all([host, guest].map((s) => (s.state.game?.type === 'pusoy-dos' && s.state.phase === Phase.PLAYING
+      ? null : next(s, Events.STATE, (st) => st.game?.type === 'pusoy-dos'))));
+    const leader = [host, guest].find((s) => s.state.game.isYourTurn);
+    const other = [host, guest].find((s) => s !== leader);
+    const opening = leader.state.game.mustInclude;
+    assert.ok(opening);
+
+    other.emit(Events.PLAY_CARDS, [opening.id]);
+    assert.equal((await next(other, Events.ERROR)).code, 'not-your-turn');
+    leader.emit(Events.PLAY_CARDS, [opening.id]);
+    const seen = await next(other, Events.STATE, (s) => s.game.table !== null);
+    assert.deepEqual(seen.game.table.cards, [opening]);
+    assert.equal(seen.game.canPass, true);
+    other.emit(Events.PASS);
+    await next(leader, Events.STATE, (s) => s.game.isYourTurn && s.game.table === null);
+  });
+});
+
 describe('app (Go Fish over Socket.IO)', () => {
   let server;
   let io;

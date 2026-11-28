@@ -1,23 +1,23 @@
 'use strict';
 
-const { GameType } = require('../constants');
 const { OldMaidGame } = require('./OldMaidGame');
+const { PusoyDosGame } = require('./PusoyDosGame');
 const { GoFishGame } = require('./GoFishGame');
+const { GameType } = require('./GameSettings');
 
 /**
- * The games the room can host, by GameType. Each class provides MIN_PLAYERS,
- * MAX_PLAYERS and maxCardsPerPlayer(playerCount).
+ * The games the host can pick, by `GameSettings.game`. Each class extends CardGame
+ * and has static MIN_PLAYERS and MAX_PLAYERS.
  */
 const GAMES = Object.freeze({
-  [GameType.OLD_MAID]: { name: 'Old Maid', Game: OldMaidGame, standardDeal: 'All cards (classic)' },
-  [GameType.GO_FISH]: { name: 'Go Fish', Game: GoFishGame, standardDeal: 'Standard (7, or 5 with 4+ players)' },
+  [GameType.OLD_MAID]: { title: 'Old Maid', Game: OldMaidGame },
+  [GameType.PUSOY_DOS]: { title: 'Pusoy Dos', Game: PusoyDosGame },
+  [GameType.GO_FISH]: { title: 'Go Fish', Game: GoFishGame },
 });
 
-/** @param {string} type */
-function gameInfo(type) {
-  const info = GAMES[type];
-  if (!info) throw new RangeError(`Unknown game: ${type}`);
-  return info;
+/** @param {string} type @returns {{ title: string, Game: typeof OldMaidGame | typeof PusoyDosGame | typeof GoFishGame }} */
+function gameFor(type) {
+  return GAMES[type];
 }
 
-module.exports = { GAMES, gameInfo };
+module.exports = { GAMES, gameFor };

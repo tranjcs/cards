@@ -3,7 +3,6 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const { GoFishGame, EndReason } = require('../src/game/GoFishGame');
-const { GameSettings } = require('../src/game/GameSettings');
 const { Card, Suit } = require('../src/cards/Card');
 const { Pile } = require('../src/cards/Pile');
 const { ActionError } = require('../src/errors');
@@ -57,13 +56,6 @@ describe('GoFishGame setup', () => {
     assert.equal(totalCards(three), 52);
     const four = new GoFishGame({ playerIds: ids(4), rng: seededRng(3) });
     assert.equal(four.drawPile.size, 52 - 20);
-  });
-
-  it('honours a custom deal size, capped to the deck', () => {
-    const settings = new GameSettings({ game: 'go-fish', cardsPerPlayer: 3 });
-    const game = new GoFishGame({ playerIds: ids(2), settings, rng: seededRng(3) });
-    assert.equal(game.drawPile.size, 52 - 6);
-    assert.equal(GoFishGame.maxCardsPerPlayer(2), 26);
   });
 
   it('needs 2 to 10 players', () => {

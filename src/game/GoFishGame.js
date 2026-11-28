@@ -35,11 +35,6 @@ class GoFishGame extends CardGame {
   static MAX_PLAYERS = MAX_PLAYERS;
   static DECK_SIZE = DECK_SIZE;
 
-  /** @param {number} playerCount */
-  static maxCardsPerPlayer(playerCount) {
-    return Math.floor(DECK_SIZE / Math.max(playerCount, 1));
-  }
-
   /** @param {number} playerCount @returns {number} the standard deal */
   static standardDeal(playerCount) {
     return playerCount <= 3 ? 7 : 5;
@@ -48,7 +43,7 @@ class GoFishGame extends CardGame {
   /**
    * @param {object} options
    * @param {string[]} options.playerIds - clockwise seating order
-   * @param {GameSettings} [options.settings]
+   * @param {GameSettings} [options.settings] - nothing is configurable yet
    * @param {import('../random').Rng} [options.rng]
    */
   constructor({ playerIds, settings = new GameSettings(), rng }) {
@@ -70,11 +65,9 @@ class GoFishGame extends CardGame {
     this.settle();
   }
 
-  /** Cards dealt to each player; the setting is capped to what the deck allows. */
+  /** Cards dealt to each player: 7, or 5 with four or more players. */
   get cardsPerPlayer() {
-    const count = this.hands.size;
-    if (this.settings.dealsAll) return GoFishGame.standardDeal(count);
-    return Math.min(this.settings.cardsPerPlayer, GoFishGame.maxCardsPerPlayer(count));
+    return GoFishGame.standardDeal(this.hands.size);
   }
 
   /** @param {string} id */

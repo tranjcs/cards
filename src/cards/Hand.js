@@ -3,12 +3,16 @@
 const { Card } = require('./Card');
 const { randomInt } = require('../random');
 
-/** The cards one player holds. Kept sorted by rank so the owner sees an orderly hand. */
+/** The cards one player holds. Kept sorted so the owner sees an orderly hand. */
 class Hand {
-  /** @param {Iterable<Card>} [cards] */
-  constructor(cards = []) {
+  /**
+   * @param {Iterable<Card>} [cards]
+   * @param {(a: Card, b: Card) => number} [compare] - sort order; rank (ace low) by default
+   */
+  constructor(cards = [], compare = Card.compare) {
     /** @type {Card[]} */
     this.cards = [];
+    this.compare = compare;
     this.add(...cards);
   }
 
@@ -26,13 +30,29 @@ class Hand {
       if (!(card instanceof Card)) throw new TypeError('Only cards can go in a hand');
     }
     this.cards.push(...cards);
-    this.cards.sort(Card.compare);
+    this.cards.sort(this.compare);
   }
 
   /** Removes and returns a random card, or null if empty. */
   takeRandom(rng) {
     if (this.isEmpty) return null;
     return this.cards.splice(randomInt(this.cards.length, rng), 1)[0];
+  }
+
+  /**
+   * Finds cards by id without removing them.
+   * @param {string[]} ids
+   * @returns {Card[]|null} the cards, or null if any id isn't in the hand
+   */
+  findAll(ids) {
+    const found = ids.map((id) => this.cards.find((card) => card.id === id));
+    return found.every(Boolean) ? found : null;
+  }
+
+  /** @param {Card[]} cards - removed if present */
+  removeAll(cards) {
+    const gone = new Set(cards);
+    this.cards = this.cards.filter((card) => !gone.has(card));
   }
 
   /** Removes and returns every card. */
