@@ -157,31 +157,19 @@ body {
 svg { display: block; fill: currentColor; }
 
 .layout {
-  display: grid;
-  gap: 24px;
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 24px max(16px, env(safe-area-inset-right)) 40px max(16px, env(safe-area-inset-left));
-}
-
-@media (min-width: 900px) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr) 300px;
-    /* The last row absorbs the tall table, so the sidebar panels stack tightly. */
-    grid-template-rows: auto auto auto 1fr;
-    align-items: start;
-  }
-  .masthead, .status { grid-column: 1 / -1; }
-  .table { grid-column: 1; grid-row: 3 / span 2; }
-  .lobby, .rules { grid-column: 2; }
-  body:not([data-phase="playing"]):not([data-phase="finished"]) .lobby { grid-column: 1 / -1; }
+  /* The table fills the screen under a slim bar. */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 14px max(16px, env(safe-area-inset-right)) 14px max(16px, env(safe-area-inset-left));
 }
 
 /* Masthead --------------------------------------------------------------- */
 
 .masthead {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -192,34 +180,34 @@ svg { display: block; fill: currentColor; }
 .suit-tiles { display: flex; gap: 10px; }
 
 .suit-tile {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
   border-radius: 12px;
   background: linear-gradient(145deg, var(--surface-hi), var(--surface-lo));
   box-shadow: var(--raised-sm);
 }
-.suit-tile svg { width: 20px; height: 20px; }
+.suit-tile svg { width: 18px; height: 18px; }
 .suit-tile--red { color: var(--suit-red); }
 .suit-tile--black { color: var(--suit-black); }
 
 .title {
   margin: 0;
-  font-size: 1.6rem;
+  font-size: 1.4rem;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
-.masthead__side { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.masthead__side { display: flex; align-items: center; gap: 10px; }
 .me { margin: 0; color: var(--muted); font-size: 0.9375rem; }
 
+@media (max-width: 1100px) {
+  .me { display: none; }
+}
 @media (max-width: 520px) {
-  .suit-tiles { gap: 6px; }
-  .suit-tile { width: 32px; height: 32px; border-radius: 10px; }
-  .suit-tile svg { width: 16px; height: 16px; }
-  .title { font-size: 1.35rem; }
-  .masthead__side { margin-left: 0; width: 100%; justify-content: space-between; }
+  .suit-tiles { display: none; }
+  .title { font-size: 1.25rem; }
 }
 
 .icon-button {
@@ -246,12 +234,19 @@ svg { display: block; fill: currentColor; }
 /* Surfaces --------------------------------------------------------------- */
 
 .status {
+  flex: 1;
+  min-width: 0;
   margin: 0;
-  padding: 14px 20px;
+  padding: 8px 18px;
   border-radius: 999px;
   background: var(--bg);
-  box-shadow: var(--inset);
-  font-weight: 600;
+  box-shadow: var(--inset-sm);
+  font-weight: 650;
+  text-align: center;
+}
+@media (max-width: 760px) {
+  .masthead { flex-wrap: wrap; gap: 10px; }
+  .status { order: 3; flex-basis: 100%; }
 }
 
 .panel {
@@ -366,22 +361,7 @@ svg { display: block; fill: currentColor; }
 }
 .tag--host { color: var(--accent); }
 
-.host-controls, .guest-controls {
-  margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid var(--hairline);
-  box-shadow: 0 -1px 0 var(--sh-dark);
-}
-
-.activity {
-  list-style: none;
-  margin: 20px 0 0;
-  padding: 0;
-  font-size: 0.8125rem;
-  color: var(--muted);
-  display: grid;
-  gap: 4px;
-}
+.guest-controls { display: grid; justify-items: start; gap: 4px; }
 
 .rules summary, .log summary {
   cursor: pointer;
@@ -408,9 +388,9 @@ svg { display: block; fill: currentColor; }
 
 /* Table ------------------------------------------------------------------ */
 
-.table { display: grid; gap: 18px; }
+.table { flex: 1; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
 
-.hud { display: flex; align-items: center; gap: 14px; }
+.hud { display: flex; align-items: center; gap: 14px; width: min(100%, 720px); margin: 0 auto; }
 .timer {
   flex: none;
   margin: 0;
@@ -446,21 +426,21 @@ svg { display: block; fill: currentColor; }
   --pad-y: calc(var(--avatar) + 46px);
   --pad-x: calc(var(--avatar) * 0.9 + 26px);
   position: relative;
-  aspect-ratio: 4 / 3;
-  min-height: 400px;
+  flex: 1;
+  display: grid;
+  min-height: 420px;
   padding: var(--pad-y) var(--pad-x);
 }
 @media (max-width: 640px) {
   .arena {
     --pad-y: calc(var(--avatar) + 40px);
     --pad-x: calc(var(--avatar) * 0.5 + 10px);
-    aspect-ratio: 3 / 4;
-    min-height: 440px;
+    min-height: 480px;
   }
 }
 
 .rail {
-  height: 100%;
+  display: grid;
   padding: 14px;
   border-radius: 999px;
   background: linear-gradient(180deg, var(--rail-hi), var(--rail-lo));
@@ -472,7 +452,6 @@ svg { display: block; fill: currentColor; }
 
 .felt {
   position: relative;
-  height: 100%;
   display: grid;
   place-items: center;
   border-radius: 999px;
@@ -499,6 +478,63 @@ svg { display: block; fill: currentColor; }
   pointer-events: none;
 }
 
+/* A triangle that circles the middle of the felt to point at whoever's turn it
+ * is, bouncing toward them. JS sets --a, the seat's angle, always turning the
+ * short way; registering it lets the browser animate the turn. */
+@property --a {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 90deg;
+}
+.turn-arrow {
+  --a: 90deg;
+  position: absolute;
+  left: calc(50% + cos(var(--a)) * 40%);
+  top: calc(50% + sin(var(--a)) * 37%);
+  width: 0;
+  height: 0;
+  transform: rotate(var(--a));
+  transition: --a 0.7s cubic-bezier(0.5, 1.4, 0.45, 1);
+  pointer-events: none;
+  z-index: 1;
+}
+.turn-arrow__tip {
+  position: absolute;
+  left: -14px;
+  top: -15px;
+  width: 28px;
+  height: 30px;
+  background: var(--turn);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+  animation: bounce 0.9s ease-in-out infinite;
+}
+@keyframes bounce {
+  0%, 100% { transform: translateX(-6px); }
+  50% { transform: translateX(8px); }
+}
+@media (max-width: 560px) {
+  .turn-arrow { left: calc(50% + cos(var(--a)) * 36%); top: calc(50% + sin(var(--a)) * 41%); }
+  .turn-arrow__tip { left: -10px; top: -11px; width: 20px; height: 22px; }
+}
+
+/* Before and after a game, the middle of the felt holds the settings. */
+.setup {
+  position: relative;
+  width: min(320px, 80%);
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+  z-index: 2;
+}
+.host-controls { width: 100%; display: grid; gap: 12px; }
+.host-controls .field { text-align: left; }
+.host-controls .field__label { color: var(--felt-ink); }
+.host-controls .hint { color: var(--felt-ink); opacity: 0.8; margin: 0; font-size: 0.8125rem; }
+.host-controls .actions { justify-content: center; margin-top: 0; }
+.setup__waiting { margin: 0; font-weight: 700; }
+
 .center {
   position: relative;
   display: flex;
@@ -512,7 +548,9 @@ svg { display: block; fill: currentColor; }
 
 /* Seats ------------------------------------------------------------------ */
 
-.seats { list-style: none; margin: 0; padding: 0; }
+/* Covers the arena so seats can be placed by %, but lets clicks through to the felt. */
+.seats { position: absolute; inset: 0; list-style: none; margin: 0; padding: 0; pointer-events: none; }
+.seat { pointer-events: auto; }
 
 .seat {
   position: absolute;
@@ -681,6 +719,8 @@ button.pile__stack:disabled { cursor: default; }
 
 /* Go Fish: the ask bar under the table. */
 .ask {
+  width: min(100%, 960px);
+  margin: 0 auto;
   display: flex;
   flex-wrap: wrap;
   gap: 12px 24px;
@@ -724,12 +764,7 @@ button.pile__stack:disabled { cursor: default; }
 
 /* Your hand -------------------------------------------------------------- */
 
-.hand-wrap {
-  padding: 14px 16px 16px;
-  border-radius: var(--radius-sm);
-  background: var(--bg);
-  box-shadow: var(--inset);
-}
+.hand-wrap { width: min(100%, 960px); margin: 0 auto; }
 
 .hand-head {
   display: flex;
@@ -737,7 +772,6 @@ button.pile__stack:disabled { cursor: default; }
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 6px;
 }
 .hand-head .section-title { margin: 0; }
 
@@ -769,12 +803,12 @@ button.pile__stack:disabled { cursor: default; }
   box-shadow: var(--raised-xs);
 }
 .arrange__option:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.arrange__hint { margin: 0 0 6px; }
+.arrange__hint { margin: 6px 0 0; }
 @media (hover: none) { .keyboard-tip { display: none; } }
 
 .fan--hand {
-  min-height: calc(var(--card-h) + 44px);
-  padding: 22px 16px 22px;
+  min-height: calc(var(--card-h) + 36px);
+  padding: 18px 16px 14px;
 }
 /* Overlap just enough for the whole hand to fit the row (a % margin is of the row's width). */
 .fan--hand > .card + .card {
@@ -791,6 +825,8 @@ button.pile__stack:disabled { cursor: default; }
 .selection { flex: 1; font-size: 0.875rem; color: var(--muted); text-align: center; }
 
 .result {
+  width: min(100%, 960px);
+  margin: 0 auto;
   padding: 16px;
   border-radius: var(--radius-sm);
   text-align: center;
@@ -805,6 +841,37 @@ button.pile__stack:disabled { cursor: default; }
 .log { font-size: 0.8125rem; }
 .log summary { color: var(--muted); }
 .log__list { margin: 10px 0 0; padding-left: 18px; display: grid; gap: 3px; color: var(--muted); }
+.log__list:empty::before { content: "Nothing yet."; margin-left: -18px; }
+
+/* Drawer: the room, rules and logs, off to the side until asked for. */
+.drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--bg) 40%, transparent);
+  backdrop-filter: blur(3px);
+}
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 21;
+  width: min(360px, 100vw);
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  padding: 18px max(20px, env(safe-area-inset-right)) 24px 20px;
+  background: var(--bg);
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.25);
+  animation: slide-in 0.2s ease-out;
+}
+.drawer__head { display: flex; align-items: center; justify-content: space-between; }
+.drawer__head .section-title { margin: 0; }
+@keyframes slide-in {
+  from { transform: translateX(100%); }
+}
 
 /* A bright "go" button, like a casino table's raise. */
 .button--go, .button--go:hover:not(:disabled) {
