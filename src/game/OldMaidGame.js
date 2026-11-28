@@ -6,7 +6,6 @@ const { CardGame } = require('./CardGame');
 const { GameSettings } = require('./GameSettings');
 const { ActionError } = require('../errors');
 const { randomInt } = require('../random');
-const { GameType } = require('../constants');
 
 /** Taken out of the 52-card deck so one queen can never be paired: the "old maid". */
 const REMOVED_CARD = new Card('Q', Suit.CLUBS);
@@ -34,8 +33,6 @@ const EndReason = Object.freeze({
  * with no cards are safe. The last player holding a card (the odd queen) loses.
  */
 class OldMaidGame extends CardGame {
-  static TYPE = GameType.OLD_MAID;
-  static TITLE = 'Old Maid';
   static MIN_PLAYERS = MIN_PLAYERS;
   static MAX_PLAYERS = MAX_PLAYERS;
   static DECK_SIZE = DECK_SIZE;
@@ -44,11 +41,6 @@ class OldMaidGame extends CardGame {
   /** @param {number} playerCount @returns {number} largest even deal for this many players */
   static maxCardsPerPlayer(playerCount) {
     return Math.floor(DECK_SIZE / Math.max(playerCount, 1));
-  }
-
-  /** Limits the host's options depend on, for a table of this size. */
-  static optionLimits(playerCount) {
-    return { maxCardsPerPlayer: OldMaidGame.maxCardsPerPlayer(playerCount) };
   }
 
   /**
@@ -194,6 +186,7 @@ class OldMaidGame extends CardGame {
     const loserId = this.result?.loserId ?? null;
 
     return {
+      type: 'old-maid',
       seats: this.playerIds.map((id) => ({
         name: nameOf(id),
         cardCount: this.handOf(id).size,
@@ -256,8 +249,6 @@ function describe(entry, nameOf) {
       return entry.fromId
         ? `${who} took a card from ${nameOf(entry.fromId)}.`
         : `${who} drew from the draw pile.`;
-    case 'timeout':
-      return `${who} ran out of time.`;
     case 'pair':
       return `${who} discarded a pair: ${entry.cards.map(String).join(' ')}.`;
     case 'safe':

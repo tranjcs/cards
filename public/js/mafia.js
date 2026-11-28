@@ -2,8 +2,10 @@
 'use strict';
 
 /**
- * Renders the Mafia table from the server's view of the game. Exposed as `window.MafiaView`.
- * Everything shown comes from the server, which only sends what this player may know.
+ * Mafia's part of the table, drawn from the server's view of the game. Exposed as
+ * `window.MafiaView`. Everything shown comes from the server, which only sends what this
+ * player may know. The client draws the seats (from `seats()`), the timer and the result;
+ * this draws the news in the middle of the felt, the pick/vote bar and your role card.
  */
 window.MafiaView = (() => {
   const ROLES = {
@@ -44,27 +46,22 @@ window.MafiaView = (() => {
 
   const $ = (id) => document.getElementById(id);
   const ui = {
-    root: $('mafia'),
+    table: $('table'),
+    news: $('mafia-news'),
     stage: $('mafia-stage'),
-    setup: $('mafia-setup'),
     headline: $('mafia-headline'),
+    setup: $('mafia-setup'),
+    act: $('mafia-act'),
+    prompt: $('mafia-prompt'),
+    choices: $('mafia-choices'),
+    team: $('mafia-team'),
+    votes: $('mafia-votes'),
     role: $('mafia-role'),
     roleCard: $('mafia-role-card'),
     roleName: $('mafia-role-name'),
     roleHelp: $('mafia-role-help'),
-    prompt: $('mafia-prompt'),
-    team: $('mafia-team'),
-    seats: $('mafia-seats'),
-    nobody: $('mafia-nobody'),
-    investigations: $('mafia-investigations'),
-    investigationList: $('mafia-investigation-list'),
-    result: $('mafia-result'),
-    log: $('mafia-log'),
+    notes: $('mafia-notes'),
   };
-
-  // Set on every render, so the long-lived "nobody" button always acts on the latest state.
-  let handlers = { onPick() {}, onVote() {} };
-  ui.nobody.addEventListener('click', () => handlers.onVote(null));
 
   function make(tag, className, text) {
     const el = document.createElement(tag);
@@ -88,8 +85,38 @@ window.MafiaView = (() => {
     return `${players} players: ${parts.join(', ')}`;
   }
 
+  /** Your current pick (at night) or vote (by day), as a public id; null for none or nobody. */
+  function currentChoice(game) {
+    if (game.night) return game.night.pick;
+    return game.day ? game.day.vote : null;
+  }
+
+  /** The game's seats in the shape the table's seat ring draws. */
+  function seats(game) {
+    const current = currentChoice(game);
+    return game.seats.map((seat) => {
+      const chosen = seat.id !== null && seat.id === current;
+      const notes = [];
+      if (seat.role) notes.push(ROLES[seat.role].name);
+      if (game.day && seat.isAlive) notes.push(plural(seat.votes, 'vote'));
+      let badge = '';
+      if (seat.hasLeft) badge = 'left';
+      else if (!seat.isAlive) badge = 'out';
+      else if (chosen) badge = game.night ? 'your pick' : 'your vote';
+      return {
+        name: seat.name,
+        isYou: seat.isYou,
+        isDead: !seat.isAlive,
+        isTarget: chosen,
+        hand: seat.card ? [seat.card] : null,
+        faceDown: seat.card ? 0 : 1,
+        note: notes.join(' · '),
+        badge,
+      };
+    });
+  }
+
   function promptText(game) {
-    if (game.stage === 'over') return 'Every card is face up.';
     const { night, day } = game;
     if (night) {
       const { prompt } = ACTIONS[night.action];
@@ -98,11 +125,59 @@ window.MafiaView = (() => {
       return prompt;
     }
     if (day?.canVote) return 'Talk it over, then vote someone out, or vote for nobody. The day ends once everyone has voted.';
-    // Watching: a spectator, or a player who's out.
-    const hush = game.isPlaying ? " Don't give anything away!" : '';
-    return game.stage === 'night'
-      ? `The town is asleep. You'll see what happened at dawn.${hush}`
-      : `Votes are public, so you can follow along.${hush}`;
+    return '';
+  }
+
+  function renderNews(game) {
+    ui.news.hidden = false;
+    ui.stage.textContent = stageTitle(game);
+    ui.headline.textContent = game.headline ?? (game.stage === 'night' ? 'The town falls asleep…' : '');
+    ui.headline.hidden = !ui.headline.textContent;
+    ui.setup.textContent = setupText(game.setup);
+  }
+
+  /** The pick or vote bar: a button per player you can choose, plus "nobody" by day. */
+  function renderActions(game, handlers) {
+    const { night, day } = game;
+    const canVote = Boolean(day?.canVote);
+    ui.act.hidden = !night && !canVote;
+    if (ui.act.hidden) return;
+
+    ui.prompt.textContent = promptText(game);
+    const current = currentChoice(game);
+    const actionName = night ? ACTIONS[night.action].button : 'Vote';
+    const choices = new Set(night ? night.choices : day.choices);
+    const options = game.seats.filter((seat) => seat.id !== null && choices.has(seat.id)).map((seat) => {
+      const chosen = seat.id === current;
+      const label = seat.isYou ? 'Yourself' : seat.name;
+      const button = make('button', 'button button--small ask__option', label);
+      button.type = 'button';
+      button.setAttribute('aria-pressed', String(chosen));
+      button.setAttribute('aria-label', `${actionName} ${seat.isYou ? 'yourself' : seat.name}`);
+      button.addEventListener('click', () => (night ? handlers.onPick(seat.id) : handlers.onVote(seat.id)));
+      return button;
+    });
+    if (canVote) {
+      const chosen = day.hasVoted && day.vote === null;
+      const nobody = make('button', 'button button--small ask__option', `Nobody (${day.nobodyVotes})`);
+      nobody.type = 'button';
+      nobody.setAttribute('aria-pressed', String(chosen));
+      nobody.setAttribute('aria-label', `Vote for nobody (${plural(day.nobodyVotes, 'vote')} so far)`);
+      nobody.addEventListener('click', () => handlers.onVote(null));
+      options.push(nobody);
+    }
+    ui.choices.replaceChildren(...options);
+
+    const team = night ? night.team : [];
+    ui.team.hidden = team.length === 0;
+    ui.team.replaceChildren(...team.map(({ name, pick }) => make('li', '', `${name} picked ${pick ?? 'nobody yet'}`)));
+
+    // Who voted for whom is public; listing it saves reading every seat.
+    const voters = day ? game.seats.filter((seat) => seat.hasVoted) : [];
+    ui.votes.hidden = voters.length === 0;
+    ui.votes.replaceChildren(...voters.map((seat) => make(
+      'li', '', `${seat.isYou ? 'You' : seat.name} voted ${seat.votedFor ?? 'nobody'}`,
+    )));
   }
 
   function renderRole(game) {
@@ -111,106 +186,33 @@ window.MafiaView = (() => {
     if (!you) return;
     const role = ROLES[you.role];
     ui.roleCard.replaceChildren(CardView.face(you.card));
-    ui.roleName.textContent = you.isAlive ? role.you : `${role.you}, and you're out.`;
-    ui.roleHelp.textContent = role.help;
-  }
-
-  function renderTeam(game) {
-    const team = game.night ? game.night.team : [];
-    ui.team.hidden = team.length === 0;
-    ui.team.replaceChildren(...team.map(({ name, pick }) => make('li', '', `${name} picked ${pick ?? 'nobody yet'}`)));
-  }
-
-  function voteSummary(seat) {
-    if (!seat.hasVoted) return 'not voted';
-    return seat.votedFor ? `voted ${seat.votedFor}` : 'voted nobody';
-  }
-
-  function renderSeats(game) {
-    const { night, day } = game;
-    const choices = new Set(night ? night.choices : (day?.canVote && day.choices) || []);
-    const current = night ? night.pick : day?.vote ?? null;
-    const actionName = night ? ACTIONS[night.action].button : 'Vote';
-
-    ui.seats.replaceChildren(...game.seats.map((seat) => {
-      const li = make('li', 'mseat');
-      li.classList.toggle('mseat--you', seat.isYou);
-      li.classList.toggle('mseat--dead', !seat.isAlive);
-      li.classList.toggle('mseat--chosen', seat.id !== null && seat.id === current);
-
-      const head = make('div', 'mseat__head');
-      head.appendChild(make('span', 'mseat__name', seat.isYou ? `${seat.name} (you)` : seat.name));
-      if (!seat.isAlive) head.appendChild(make('span', 'mseat__badge', seat.hasLeft ? 'left' : 'out'));
-      li.appendChild(head);
-
-      if (seat.card) {
-        const role = make('div', 'mseat__role');
-        role.append(CardView.face(seat.card, 'card--mini'), make('span', '', ROLES[seat.role].name));
-        li.appendChild(role);
-      }
-      if (day && seat.isAlive) {
-        li.appendChild(make('span', 'mseat__votes', `${plural(seat.votes, 'vote')} · ${voteSummary(seat)}`));
-      }
-      if (seat.id !== null && choices.has(seat.id)) {
-        const chosen = seat.id === current;
-        const button = make('button', 'button button--small mseat__act', chosen ? `✓ ${actionName}` : actionName);
-        button.type = 'button';
-        button.setAttribute('aria-pressed', String(chosen));
-        button.setAttribute('aria-label', `${actionName} ${seat.name}`);
-        button.addEventListener('click', () => (night ? handlers.onPick(seat.id) : handlers.onVote(seat.id)));
-        li.appendChild(button);
-      }
-      return li;
-    }));
-  }
-
-  function renderNobody(game) {
-    const { day } = game;
-    ui.nobody.hidden = !day?.canVote;
-    if (ui.nobody.hidden) return;
-    const chosen = day.hasVoted && day.vote === null;
-    ui.nobody.textContent = `${chosen ? '✓ ' : ''}Vote for nobody (${day.nobodyVotes})`;
-    ui.nobody.setAttribute('aria-pressed', String(chosen));
-  }
-
-  function renderInvestigations(game) {
-    ui.investigations.hidden = game.investigations.length === 0;
-    ui.investigationList.replaceChildren(...game.investigations.map(({ round, name, isMafia }) => make(
-      'li', isMafia ? 'mafia__found' : '', `Night ${round}: ${name} ${isMafia ? 'is Mafia!' : 'is not Mafia.'}`,
+    ui.roleName.textContent = you.isAlive || game.result ? role.you : `${role.you}, and you're out.`;
+    let help = role.help;
+    if (!you.isAlive && !game.result) help = "Watch quietly, and don't give anything away!";
+    ui.roleHelp.textContent = help;
+    ui.notes.hidden = game.investigations.length === 0;
+    ui.notes.replaceChildren(...game.investigations.map(({ round, name, isMafia }) => make(
+      'li', isMafia ? 'mafia-role__found' : '', `Night ${round}: ${name} ${isMafia ? 'is Mafia!' : 'is not Mafia.'}`,
     )));
   }
 
-  function renderResult(game) {
-    ui.result.hidden = !game.result;
-    if (!game.result) return;
-    const lost = game.isPlaying && !game.result.youWon;
-    ui.result.classList.toggle('result--lost', lost);
-    let outcome = '';
-    if (game.isPlaying) outcome = game.result.youWon ? ' You won.' : ' You lost.';
-    ui.result.textContent = `${WINNERS[game.result.winner]}${outcome}`;
-  }
-
   /**
-   * @param {object|null} game - the server's Mafia view, or null to hide the table
-   * @param {{ onPick: (publicId: string) => void, onVote: (publicId: string|null) => void }} actions
+   * @param {object|null} game - the server's Mafia view, or null to hide Mafia's parts
+   * @param {{ onPick: (publicId: string) => void, onVote: (publicId: string|null) => void }} [handlers]
    */
-  function render(game, actions) {
-    ui.root.hidden = !game;
-    if (!game) return;
-    handlers = actions;
-    ui.root.dataset.stage = game.stage;
-    ui.stage.textContent = stageTitle(game);
-    ui.setup.textContent = setupText(game.setup);
-    ui.headline.textContent = game.headline ?? (game.stage === 'night' ? 'The town falls asleep…' : '');
-    ui.headline.hidden = !ui.headline.textContent;
+  function render(game, handlers) {
+    // Lets the stylesheet darken the felt at night.
+    if (game) ui.table.dataset.mafiaStage = game.stage;
+    else delete ui.table.dataset.mafiaStage;
+    if (!game) {
+      ui.news.hidden = true;
+      ui.act.hidden = true;
+      ui.role.hidden = true;
+      return;
+    }
+    renderNews(game);
+    renderActions(game, handlers);
     renderRole(game);
-    ui.prompt.textContent = promptText(game);
-    renderTeam(game);
-    renderSeats(game);
-    renderNobody(game);
-    renderInvestigations(game);
-    renderResult(game);
-    ui.log.replaceChildren(...[...game.log].reverse().map((line) => make('li', '', line)));
   }
 
   /** The line in the page's status bar. Kept free of role details, which anyone nearby can read. */
@@ -231,5 +233,13 @@ window.MafiaView = (() => {
     return game.stage === 'night' ? `Night ${game.round} ends` : 'Voting closes';
   }
 
-  return { render, statusText, timerLabel };
+  /** @returns {{ text: string, lost: boolean }} the end-of-game banner */
+  function result(game) {
+    const lost = game.isPlaying && !game.result.youWon;
+    let outcome = '';
+    if (game.isPlaying) outcome = game.result.youWon ? ' You won.' : ' You lost.';
+    return { text: `${WINNERS[game.result.winner]}${outcome}`, lost };
+  }
+
+  return { render, seats, statusText, timerLabel, result };
 })();

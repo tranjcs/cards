@@ -2,8 +2,7 @@
 
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { GameSettings, DEAL_ALL, AUTO_MAFIA, MAX_MAFIA } = require('../src/game/GameSettings');
-const { GameType } = require('../src/constants');
+const { GameSettings, GameType, DEAL_ALL, AUTO_MAFIA, MAX_MAFIA } = require('../src/game/GameSettings');
 const { ActionError } = require('../src/errors');
 
 describe('GameSettings', () => {
@@ -19,6 +18,17 @@ describe('GameSettings', () => {
     assert.equal(changed.cardsPerPlayer, 7);
     assert.equal(original.cardsPerPlayer, DEAL_ALL);
     assert.equal(changed.with({}).cardsPerPlayer, 7);
+  });
+
+  it('picks the game, Old Maid by default', () => {
+    assert.equal(new GameSettings().game, 'old-maid');
+    const pusoy = new GameSettings().with({ game: 'pusoy-dos' });
+    assert.equal(pusoy.game, 'pusoy-dos');
+    const { game, cardsPerPlayer } = pusoy.with({ cardsPerPlayer: 3 }).toJSON();
+    assert.deepEqual({ game, cardsPerPlayer }, { game: 'pusoy-dos', cardsPerPlayer: 3 });
+    for (const value of ['poker', null, 1, '__proto__']) {
+      assert.throws(() => new GameSettings().with({ game: value }), ActionError, `game ${value}`);
+    }
   });
 
   it('rejects invalid values', () => {
@@ -57,5 +67,11 @@ describe('GameSettings', () => {
     for (const changes of bad) {
       assert.throws(() => new GameSettings().with(changes), ActionError, JSON.stringify(changes));
     }
+  });
+});
+
+describe('GameSettings game choice', () => {
+  it('can switch to Go Fish', () => {
+    assert.equal(new GameSettings().with({ game: 'go-fish' }).game, 'go-fish');
   });
 });

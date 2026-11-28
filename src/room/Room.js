@@ -4,9 +4,11 @@ const { Player } = require('./Player');
 const { NameAllocator } = require('./NameAllocator');
 const { KickVote } = require('./KickVote');
 const { OldMaidGame } = require('../game/OldMaidGame');
+const { PusoyDosGame } = require('../game/PusoyDosGame');
+const { GoFishGame } = require('../game/GoFishGame');
 const { MafiaGame } = require('../game/MafiaGame');
-const { GAMES } = require('../game/games');
 const { GameSettings } = require('../game/GameSettings');
+const { GAMES, gameFor } = require('../game/games');
 const { ActionError } = require('../errors');
 const { Phase, KickReason } = require('../constants');
 
@@ -67,7 +69,7 @@ class Room {
     /** @type {string|null} */
     this.hostId = null;
     this.settings = new GameSettings();
-    /** @type {import('../game/CardGame').CardGame|null} */
+    /** @type {OldMaidGame|PusoyDosGame|GoFishGame|MafiaGame|null} */
     this.game = null;
     /** Counts games started, so a new game always restarts the countdown. */
     this.gamesStarted = 0;
@@ -154,13 +156,13 @@ class Room {
   startGame(id) {
     this.assertHost(id);
     if (this.phase === Phase.PLAYING) throw new ActionError('game-running', 'A game is already running.');
-    const Game = GAMES[this.settings.game];
+    const { title, Game } = gameFor(this.settings.game);
     const playerIds = this.memberIds.slice(0, Game.MAX_PLAYERS);
     const game = new Game({ playerIds, settings: this.settings, rng: this.rng });
     this.departedNames.clear();
     this.game = game;
     this.gamesStarted += 1;
-    this.announce(`${this.nameOf(id)} started a game of ${Game.TITLE}.`);
+    this.announce(`${this.nameOf(id)} started a game of ${title}.`);
     this.changed();
   }
 
@@ -230,6 +232,30 @@ class Room {
     this.changed();
   }
 
+  /** Pusoy Dos. @param {string} id @param {unknown} cardIds - untrusted */
+  playCards(id, cardIds) {
+    this.requireGame(PusoyDosGame).play(id, cardIds);
+    this.changed();
+  }
+
+  /** Pusoy Dos. @param {string} id */
+  pass(id) {
+    this.requireGame(PusoyDosGame).pass(id);
+    this.changed();
+  }
+
+  /** Go Fish. @param {string} id @param {unknown} request - untrusted `{ seat, rank }` */
+  ask(id, request) {
+    this.requireGame(GoFishGame).ask(id, request);
+    this.changed();
+  }
+
+  /** Go Fish. @param {string} id */
+  goFish(id) {
+    this.requireGame(GoFishGame).goFish(id);
+    this.changed();
+  }
+
   /** Mafia. @param {string} id @param {unknown} targetPublicId - untrusted */
   nightPick(id, targetPublicId) {
     const game = this.requireGame(MafiaGame);
@@ -244,12 +270,17 @@ class Room {
     this.changed();
   }
 
-  /** The countdown ran out: the game decides what that means (a random move, the end of the night...). */
+  /** Plays for whoever ran out of time. */
   timeOutTurn() {
     const game = this.game;
     if (!game || game.isOver) return;
     try {
-      game.timeOut();
+      // Turn-based games play a random move and say who for; Mafia ends the night or day.
+      const id = game.timeOut();
+      if (id) {
+        const move = game instanceof OldMaidGame ? 'a card was drawn' : 'a move was made';
+        this.announce(`${this.nameOf(id)} ran out of time; ${move} for them.`);
+      }
     } catch (error) {
       // A bug, not a player's doing. This runs from a timer, where a throw would crash the
       // server; log it and leave the game as it is (the host can still end it).
@@ -266,8 +297,9 @@ class Room {
     if (!me) return null;
     const isHost = id === this.hostId;
     const phase = this.phase;
-    const Chosen = GAMES[this.settings.game];
-    const games = Object.values(GAMES);
+    const { Game } = gameFor(this.settings.game);
+    const playerCount = Math.min(this.members.size, OldMaidGame.MAX_PLAYERS);
+    const mafiaPlayerCount = Math.min(this.members.size, MafiaGame.MAX_PLAYERS);
     const seated = new Set(this.game ? this.game.playerIds : []);
 
     return {
@@ -283,17 +315,18 @@ class Room {
       })),
       settings: {
         ...this.settings.toJSON(),
-        // e.g. maxCardsPerPlayer, maxMafia: what each game allows with this many people here
-        ...Object.assign({}, ...games.map((Game) => Game.optionLimits(Math.min(this.members.size, Game.MAX_PLAYERS)))),
+        maxCardsPerPlayer: OldMaidGame.maxCardsPerPlayer(playerCount),
+        maxMafia: MafiaGame.maxMafia(mafiaPlayerCount),
+        autoMafia: MafiaGame.mafiaCountFor(mafiaPlayerCount),
       },
-      games: games.map((Game) => ({
-        id: Game.TYPE,
-        name: Game.TITLE,
-        minPlayers: Game.MIN_PLAYERS,
-        maxPlayers: Game.MAX_PLAYERS,
+      games: Object.entries(GAMES).map(([type, { title, Game: G }]) => ({
+        type,
+        title,
+        minPlayers: G.MIN_PLAYERS,
+        maxPlayers: G.MAX_PLAYERS,
       })),
-      limits: { minPlayers: Chosen.MIN_PLAYERS, maxPlayers: Chosen.MAX_PLAYERS },
-      canStart: isHost && phase !== Phase.PLAYING && this.members.size >= Chosen.MIN_PLAYERS,
+      limits: { minPlayers: Game.MIN_PLAYERS, maxPlayers: Game.MAX_PLAYERS },
+      canStart: isHost && phase !== Phase.PLAYING && this.members.size >= Game.MIN_PLAYERS,
       hostVote: {
         votes: this.hostKickVote.count,
         needed: this.hostKickVote.needed,
@@ -301,8 +334,11 @@ class Room {
       },
       activity: [...this.activity],
       game: this.game && {
-        type: this.game.constructor.TYPE,
-        ...this.game.viewFor(id, (gameId) => this.nameOf(gameId), (gameId) => this.members.get(gameId)?.publicId ?? null),
+        ...this.game.viewFor(
+          id,
+          (gameId) => this.nameOf(gameId),
+          (gameId) => this.members.get(gameId)?.publicId ?? null,
+        ),
         // Relative, so it doesn't depend on the client's clock being right.
         turnRemainingMs: this.turnDeadline ? Math.max(0, this.turnDeadline - Date.now()) : null,
         turnTimeoutMs: this.turnLimitMs ?? this.turnTimeoutMs,
@@ -368,12 +404,14 @@ class Room {
 
   /**
    * @private
-   * @param {Function} [Game] - the game class the move belongs to
+   * @template {typeof OldMaidGame | typeof PusoyDosGame | typeof GoFishGame | typeof MafiaGame} G
+   * @param {G} Game - the game the action belongs to
+   * @returns {InstanceType<G>}
    */
   requireGame(Game) {
     if (!this.game) throw new ActionError('no-game', 'No game is running.');
-    if (Game && !(this.game instanceof Game)) throw new ActionError('wrong-game', "That move isn't part of this game.");
-    return this.game;
+    if (!(this.game instanceof Game)) throw new ActionError('wrong-game', "That move isn't part of this game.");
+    return /** @type {InstanceType<G>} */ (this.game);
   }
 
   /** @private @param {unknown} publicId - untrusted @returns {Player} */

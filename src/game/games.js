@@ -1,16 +1,28 @@
 'use strict';
 
-const { GameType } = require('../constants');
 const { OldMaidGame } = require('./OldMaidGame');
+const { PusoyDosGame } = require('./PusoyDosGame');
+const { GoFishGame } = require('./GoFishGame');
 const { MafiaGame } = require('./MafiaGame');
+const { GameType } = require('./GameSettings');
 
 /**
- * Every game the host can pick, by GameType. Each is a CardGame subclass with static
- * TYPE, TITLE, MIN_PLAYERS, MAX_PLAYERS and optionLimits(playerCount).
+ * The games the host can pick, by `GameSettings.game`. Each class extends CardGame
+ * and has static MIN_PLAYERS and MAX_PLAYERS.
  */
 const GAMES = Object.freeze({
-  [GameType.OLD_MAID]: OldMaidGame,
-  [GameType.MAFIA]: MafiaGame,
+  [GameType.OLD_MAID]: { title: 'Old Maid', Game: OldMaidGame },
+  [GameType.PUSOY_DOS]: { title: 'Pusoy Dos', Game: PusoyDosGame },
+  [GameType.GO_FISH]: { title: 'Go Fish', Game: GoFishGame },
+  [GameType.MAFIA]: { title: 'Mafia', Game: MafiaGame },
 });
 
-module.exports = { GAMES };
+/**
+ * @param {string} type
+ * @returns {{ title: string, Game: typeof OldMaidGame | typeof PusoyDosGame | typeof GoFishGame | typeof MafiaGame }}
+ */
+function gameFor(type) {
+  return GAMES[type];
+}
+
+module.exports = { GAMES, gameFor };

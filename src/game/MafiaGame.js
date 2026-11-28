@@ -4,9 +4,8 @@ const { Card, Suit, RANKS } = require('../cards/Card');
 const { Deck } = require('../cards/Deck');
 const { Pile } = require('../cards/Pile');
 const { CardGame } = require('./CardGame');
-const { GameSettings, AUTO_MAFIA, MAX_MAFIA } = require('./GameSettings');
+const { GameSettings, GameType, AUTO_MAFIA, MAX_MAFIA } = require('./GameSettings');
 const { ActionError } = require('../errors');
-const { GameType } = require('../constants');
 const { randomInt, shuffle } = require('../random');
 
 const MIN_PLAYERS = 4;
@@ -88,8 +87,6 @@ function roleOfCard(card) {
  * votes are public.
  */
 class MafiaGame extends CardGame {
-  static TYPE = GameType.MAFIA;
-  static TITLE = 'Mafia';
   static MIN_PLAYERS = MIN_PLAYERS;
   static MAX_PLAYERS = MAX_PLAYERS;
   static NIGHT_MS = NIGHT_MS;
@@ -112,11 +109,6 @@ class MafiaGame extends CardGame {
   static mafiaCountFor(playerCount, setting = AUTO_MAFIA) {
     const wanted = setting === AUTO_MAFIA ? Math.floor((playerCount + 1) / 4) : setting;
     return Math.min(Math.max(wanted, 1), MafiaGame.maxMafia(playerCount));
-  }
-
-  /** Limits the host's options depend on, for a table of this size. */
-  static optionLimits(playerCount) {
-    return { maxMafia: MafiaGame.maxMafia(playerCount), autoMafia: MafiaGame.mafiaCountFor(playerCount) };
   }
 
   /**
@@ -237,9 +229,13 @@ class MafiaGame extends CardGame {
     this.advanceIfEveryoneActed();
   }
 
-  /** The countdown ran out: the night or day ends with the picks and votes made so far. */
+  /**
+   * The countdown ran out: the night or day ends with the picks and votes made so far.
+   * @returns {null} nobody in particular ran out of time
+   */
   timeOut() {
     if (!this.isOver) this.endStage();
+    return null;
   }
 
   /** A player who leaves is out; their card is revealed and their picks and votes dropped. */
@@ -393,6 +389,7 @@ class MafiaGame extends CardGame {
       || (myRole === Role.MAFIA && this.roleOf(id) === Role.MAFIA);
 
     return {
+      type: GameType.MAFIA,
       stage: over ? 'over' : this.stage,
       round: this.round,
       setup: { ...this.setup, players: this.playerIds.length },
